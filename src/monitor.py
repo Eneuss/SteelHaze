@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import sqlite3
 import time
+import threading
 import sys
 import os
 from datetime import datetime
@@ -10,11 +11,13 @@ from scanner import scan_network
 from database import DB_PATH
 from traffic_monitor import traffic_monitor
 from anomaly_detector import detect_anomalies, save_anomaly
+from nvd_scanner import run_nvd_scan
 
 
 def save_devices(devices):
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
+    new_ips = []
 
     for device in devices:
         mac = device["mac"]
@@ -36,9 +39,9 @@ def save_devices(devices):
                     (ip, mac, hostname),
                 )
                 device_id = cursor.lastrowid
+                new_ips.append(ip)
                 print(f"[{datetime.now().strftime('%H:%M:%S')}] New device: {ip}  {mac}  {hostname}")
         else:
-            # Devices without a MAC (e.g. the host itself) — track by IP
             cursor.execute("SELECT id FROM devices WHERE ip = ? AND (mac IS NULL OR mac = 'N/A')", (ip,))
             row = cursor.fetchone()
             if row:
@@ -53,6 +56,7 @@ def save_devices(devices):
                     (ip, mac, hostname),
                 )
                 device_id = cursor.lastrowid
+                new_ips.append(ip)
 
         cursor.execute(
             "INSERT INTO connection_logs (device_id, ip, status) VALUES (?, ?, ?)",
@@ -61,6 +65,7 @@ def save_devices(devices):
 
     conn.commit()
     conn.close()
+    return new_ips
 
 
 def save_traffic_stats():
@@ -87,18 +92,31 @@ def save_traffic_stats():
     conn.close()
 
 
+def deep_scan_loop(interval=1800):
+    while True:
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] Starting scheduled deep CVE scan...")
+        run_nvd_scan()
+        time.sleep(interval)
+
+
 def monitor_loop(interval=30):
     print("=== SteelHaze V2 Monitor Started ===")
-    print(f"Network scan every {interval}s  |  Dashboard: http://localhost:5000")
+    print(f"Network scan every {interval}s  |  Deep CVE scan every 30min  |  Dashboard: http://localhost:5000")
     print("Press Ctrl+C to stop\n")
 
     traffic_monitor.start_monitoring()
 
+    threading.Thread(target=deep_scan_loop, daemon=True).start()
+
     try:
         while True:
             devices = scan_network()
-            save_devices(devices)
+            new_ips = save_devices(devices)
             save_traffic_stats()
+
+            for ip in new_ips:
+                print(f"[{datetime.now().strftime('%H:%M:%S')}] Triggering CVE scan for new device: {ip}")
+                threading.Thread(target=run_nvd_scan, args=(ip,), daemon=True).start()
 
             anomalies = detect_anomalies()
             if anomalies:

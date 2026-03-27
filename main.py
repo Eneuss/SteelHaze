@@ -7,7 +7,6 @@ Usage:
     sudo python main.py            # full mode (traffic monitoring needs root)
     python main.py --no-traffic    # skip packet sniffing (no root needed)
     python main.py --scan-only     # one-shot scan, no web UI
-    python main.py --deep-scan     # CVE scan against NVD (slow)
 """
 import sys
 import os
@@ -33,11 +32,6 @@ def main():
 
     init_database()
 
-    if '--deep-scan' in args:
-        from nvd_scanner import run_nvd_scan
-        run_nvd_scan()
-        return
-
     if '--scan-only' in args:
         from scanner import scan_network
         devices = scan_network()
@@ -53,8 +47,7 @@ def main():
         tm.traffic_monitor.start_monitoring = lambda **kw: None
 
     print("=== SteelHaze V2 ===")
-    print("Dashboard: http://localhost:5000")
-    print("Deep CVE scan: python main.py --deep-scan\n")
+    print("Dashboard: http://localhost:5000\n")
 
     # Run web server in background thread, monitor loop in foreground
     web_thread = threading.Thread(target=run_web, daemon=True)
