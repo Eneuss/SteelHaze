@@ -30,10 +30,13 @@ def index():
 def get_devices():
     conn = db()
     rows = conn.execute('''
-        SELECT ip, mac, hostname, first_seen, last_seen, is_known
-        FROM devices
-        WHERE last_seen > ?
-        ORDER BY last_seen DESC
+        SELECT d.mac, d.hostname, d.first_seen,
+               dn.ip, dn.last_seen, dn.is_known
+        FROM devices d
+        JOIN device_network dn ON d.id = dn.device_id
+        WHERE dn.last_seen > ?
+        AND dn.id = (SELECT id FROM device_network WHERE device_id = d.id ORDER BY last_seen DESC LIMIT 1)
+        ORDER BY dn.last_seen DESC
     ''', (datetime.now() - timedelta(hours=24),)).fetchall()
     conn.close()
     return jsonify([dict(r) for r in rows])
@@ -42,12 +45,18 @@ def get_devices():
 @app.route('/api/stats')
 def get_stats():
     conn = db()
-    total   = conn.execute('SELECT COUNT(*) FROM devices').fetchone()[0]
-    active  = conn.execute(
-        'SELECT COUNT(*) FROM devices WHERE last_seen > ?',
-        (datetime.now() - timedelta(minutes=5),)
-    ).fetchone()[0]
-    unknown = conn.execute('SELECT COUNT(*) FROM devices WHERE is_known = 0').fetchone()[0]
+    total = conn.execute('SELECT COUNT(*) FROM devices').fetchone()[0]
+    active = conn.execute('''
+        SELECT COUNT(DISTINCT d.id) FROM devices d
+        JOIN device_network dn ON d.id = dn.device_id
+        WHERE d.last_seen > ?
+    ''', (datetime.now() - timedelta(minutes=5),)).fetchone()[0]
+    unknown = conn.execute('''
+        SELECT COUNT(DISTINCT d.id) FROM devices d
+        JOIN device_network dn ON d.id = dn.device_id
+        WHERE dn.is_known = 0
+        AND dn.id = (SELECT id FROM device_network WHERE device_id = d.id ORDER BY last_seen DESC LIMIT 1)
+    ''').fetchone()[0]
     anomaly_count = conn.execute(
         "SELECT COUNT(*) FROM anomalies WHERE timestamp > datetime('now', '-24 hours')"
     ).fetchone()[0]
@@ -67,8 +76,10 @@ def get_stats():
 @app.route('/api/mark_known/<mac>', methods=['POST'])
 def mark_known(mac):
     conn = db()
-    conn.execute('UPDATE devices SET is_known = 1 WHERE mac = ?', (mac,))
-    conn.commit()
+    row = conn.execute('SELECT id FROM devices WHERE mac = ?', (mac,)).fetchone()
+    if row:
+        conn.execute('UPDATE device_network SET is_known = 1 WHERE device_id = ?', (row[0],))
+        conn.commit()
     conn.close()
     return jsonify({'success': True})
 
@@ -77,15 +88,16 @@ def mark_known(mac):
 def get_traffic():
     conn = db()
     rows = conn.execute('''
-        SELECT d.ip, d.mac, d.hostname,
+        SELECT dn.ip, d.mac, d.hostname,
                SUM(t.bytes_sent)     AS total_sent,
                SUM(t.bytes_received) AS total_received,
                SUM(t.packets)        AS total_packets,
                MAX(t.timestamp)      AS last_update
         FROM devices d
-        LEFT JOIN traffic_stats t ON d.id = t.device_id
+        JOIN traffic_stats t ON d.id = t.device_id
+        JOIN device_network dn ON d.id = dn.device_id AND t.network_id = dn.network_id
         WHERE t.timestamp > datetime('now', '-24 hours')
-        GROUP BY d.ip
+        GROUP BY d.id
         ORDER BY (total_sent + total_received) DESC
     ''').fetchall()
     conn.close()

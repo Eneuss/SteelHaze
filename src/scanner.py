@@ -7,21 +7,34 @@ from datetime import datetime
 
 def get_local_network():
     """Detect the local network from the default gateway interface."""
+    return get_network_info()["subnet"]
+
+
+def get_network_info():
+    """Return current network metadata: gateway, subnet, interface, ssid."""
     try:
+        import subprocess
         gateways = netifaces.gateways()
         default = gateways.get("default", {}).get(netifaces.AF_INET)
         if not default:
-            return "192.168.1.0/24"
+            return {"gateway_ip": "unknown", "subnet": "192.168.1.0/24", "interface": "unknown", "ssid": None}
+        gateway_ip = default[0]
         iface = default[1]
         addrs = netifaces.ifaddresses(iface).get(netifaces.AF_INET, [{}])[0]
         ip = addrs.get("addr", "")
         netmask = addrs.get("netmask", "255.255.255.0")
         if not ip:
-            return "192.168.1.0/24"
+            return {"gateway_ip": gateway_ip, "subnet": "192.168.1.0/24", "interface": iface, "ssid": None}
         network = ipaddress.IPv4Network(f"{ip}/{netmask}", strict=False)
-        return str(network)
+        ssid = None
+        try:
+            result = subprocess.run(["iwgetid", iface, "-r"], capture_output=True, text=True, timeout=2)
+            ssid = result.stdout.strip() or None
+        except Exception:
+            pass
+        return {"gateway_ip": gateway_ip, "subnet": str(network), "interface": iface, "ssid": ssid}
     except Exception:
-        return "192.168.1.0/24"
+        return {"gateway_ip": "unknown", "subnet": "192.168.1.0/24", "interface": "unknown", "ssid": None}
 
 
 def scan_network(network_range=None):

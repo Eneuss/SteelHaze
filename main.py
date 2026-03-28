@@ -4,8 +4,7 @@ SteelHaze V2 — main entry point.
 Starts both the network monitor loop and the Flask web dashboard in parallel.
 
 Usage:
-    sudo python main.py            # full mode (traffic monitoring needs root)
-    python main.py --no-traffic    # skip packet sniffing (no root needed)
+    sudo python main.py            # full mode
     python main.py --scan-only     # one-shot scan, no web UI
 """
 import sys
@@ -38,13 +37,6 @@ def main():
         for d in devices:
             print(f"  {d['ip']:<16}  {d['mac']:<20}  {d['hostname']}")
         return
-
-    if '--no-traffic' in args:
-        from traffic_monitor import traffic_monitor
-        traffic_monitor.monitoring = False  # prevent start
-        # Monkey-patch so monitor doesn't start it
-        import traffic_monitor as tm
-        tm.traffic_monitor.start_monitoring = lambda **kw: None
 
     print("=== SteelHaze V2 ===")
     print("Dashboard: http://localhost:5000\n")

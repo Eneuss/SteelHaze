@@ -5,18 +5,18 @@ from database import DB_PATH
 
 
 def detect_anomalies():
-    """Detect behavioural anomalies and return a list of anomaly dicts."""
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     anomalies = []
 
     # 1. High traffic: more than 100 MB in the last minute
     cursor.execute('''
-        SELECT d.ip, d.hostname, d.mac,
+        SELECT dn.ip, d.hostname, d.mac,
                SUM(t.bytes_sent + t.bytes_received) AS total_bytes,
                MAX(t.timestamp) AS last_seen
         FROM devices d
         JOIN traffic_stats t ON d.id = t.device_id
+        JOIN device_network dn ON d.id = dn.device_id AND t.network_id = dn.network_id
         WHERE t.timestamp > datetime('now', '-1 minute')
         GROUP BY d.id
         HAVING total_bytes > 104857600
@@ -35,9 +35,11 @@ def detect_anomalies():
     current_hour = datetime.now().hour
     if 2 <= current_hour < 6:
         cursor.execute('''
-            SELECT ip, hostname, mac, last_seen
-            FROM devices
-            WHERE last_seen > datetime('now', '-5 minutes')
+            SELECT dn.ip, d.hostname, d.mac, d.last_seen
+            FROM devices d
+            JOIN device_network dn ON d.id = dn.device_id
+            WHERE d.last_seen > datetime('now', '-5 minutes')
+            AND dn.id = (SELECT id FROM device_network WHERE device_id = d.id ORDER BY last_seen DESC LIMIT 1)
         ''')
         for row in cursor.fetchall():
             anomalies.append({
@@ -51,9 +53,10 @@ def detect_anomalies():
 
     # 3. New unknown devices (seen in the last 10 minutes, not yet marked known)
     cursor.execute('''
-        SELECT ip, hostname, mac, first_seen
-        FROM devices
-        WHERE is_known = 0 AND first_seen > datetime('now', '-10 minutes')
+        SELECT dn.ip, d.hostname, d.mac, dn.first_seen
+        FROM devices d
+        JOIN device_network dn ON d.id = dn.device_id
+        WHERE dn.is_known = 0 AND dn.first_seen > datetime('now', '-10 minutes')
     ''')
     for row in cursor.fetchall():
         anomalies.append({

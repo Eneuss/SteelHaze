@@ -39,7 +39,7 @@ def run_nvd_scan(network_range=None):
         mac = nm[host]["addresses"].get("mac", "N/A")
 
         # Resolve device_id from DB
-        cursor.execute("SELECT id FROM devices WHERE ip = ?", (host,))
+        cursor.execute("SELECT device_id FROM device_network WHERE ip = ? ORDER BY last_seen DESC LIMIT 1", (host,))
         row = cursor.fetchone()
         device_id = row[0] if row else None
 
@@ -66,7 +66,7 @@ def run_nvd_scan(network_range=None):
 
                 if device_id:
                     cursor.execute('''
-                        INSERT INTO cve_findings
+                        INSERT OR IGNORE INTO cve_findings
                             (device_id, ip, port, service, cve_id, severity, description, timestamp)
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                     ''', (device_id, host, port, label, cve["id"], cve["severity"],
