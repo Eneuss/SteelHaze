@@ -22,7 +22,7 @@ def run_nvd_scan(network_range=None):
     nm = nmap.PortScanner()
     nm.scan(
         hosts=network_range,
-        arguments="-sV -T4 --open -p 21,22,23,25,53,80,110,143,443,445,3306,3389,5900,8080,8443",
+        arguments="-sV -T4 --open -p-",
     )
 
     conn = sqlite3.connect(DB_PATH)
