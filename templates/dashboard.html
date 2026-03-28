@@ -83,7 +83,7 @@
 <header>
   <h1>SteelHaze V2</h1>
   <span>Network Security Monitor</span>
-  <span id="refresh-timer">Last scan: <b id="last-scan-label">—</b></span>
+  <span id="refresh-timer">Refreshing in <b id="countdown">30</b>s</span>
 </header>
 
 <main>
@@ -334,32 +334,14 @@ function loadAll() {
   loadTimeline();
 }
 
-function timeSince(ts) {
-  if (!ts) return '—';
-  const secs = Math.floor((Date.now() - new Date(ts + 'Z')) / 1000);
-  if (secs < 60)  return secs + 's ago';
-  if (secs < 3600) return Math.floor(secs / 60) + 'm ago';
-  return Math.floor(secs / 3600) + 'h ago';
-}
-
-let lastScan = null;
-
-async function pollStatus() {
-  try {
-    const s = await fetch('/api/status').then(r => r.json());
-    document.getElementById('last-scan-label').textContent = timeSince(s.last_scan);
-    if (s.last_scan !== lastScan) {
-      lastScan = s.last_scan;
-      if (lastScan) loadAll();
-    }
-  } catch(e) {}
-}
-
-// Poll for new scans every 5s — refresh data only when a new scan completes
-setInterval(pollStatus, 5000);
+let seconds = 30;
+setInterval(() => {
+  seconds--;
+  document.getElementById('countdown').textContent = seconds;
+  if (seconds <= 0) { seconds = 30; loadAll(); }
+}, 1000);
 
 loadAll();
-pollStatus();
 </script>
 </body>
 </html>

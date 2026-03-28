@@ -166,11 +166,3 @@ def acknowledge_anomaly(anomaly_id):
     conn.commit()
     conn.close()
     return jsonify({'success': True})
-
-
-@app.route('/api/status')
-def get_status():
-    conn = db()
-    row = conn.execute('SELECT MAX(timestamp) as last_scan FROM connection_logs').fetchone()
-    conn.close()
-    return jsonify({'last_scan': row['last_scan']})
