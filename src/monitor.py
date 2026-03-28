@@ -51,16 +51,10 @@ def save_devices(devices, network_info):
             row = cursor.fetchone()
             if row:
                 device_id = row[0]
-                if hostname != "Unknown":
-                    cursor.execute(
-                        "UPDATE devices SET last_seen = ?, hostname = ? WHERE id = ?",
-                        (datetime.now(), hostname, device_id)
-                    )
-                else:
-                    cursor.execute(
-                        "UPDATE devices SET last_seen = ? WHERE id = ?",
-                        (datetime.now(), device_id)
-                    )
+                cursor.execute(
+                    "UPDATE devices SET last_seen = ?, hostname = ? WHERE id = ?",
+                    (datetime.now(), hostname, device_id)
+                )
             else:
                 cursor.execute(
                     "INSERT INTO devices (mac, hostname) VALUES (?, ?)",
@@ -76,16 +70,10 @@ def save_devices(devices, network_info):
             row = cursor.fetchone()
             if row:
                 device_id = row[0]
-                if hostname != "Unknown":
-                    cursor.execute(
-                        "UPDATE devices SET last_seen = ?, hostname = ? WHERE id = ?",
-                        (datetime.now(), hostname, device_id)
-                    )
-                else:
-                    cursor.execute(
-                        "UPDATE devices SET last_seen = ? WHERE id = ?",
-                        (datetime.now(), device_id)
-                    )
+                cursor.execute(
+                    "UPDATE devices SET last_seen = ?, hostname = ? WHERE id = ?",
+                    (datetime.now(), hostname, device_id)
+                )
             else:
                 cursor.execute(
                     "INSERT INTO devices (mac, hostname) VALUES (?, ?)",
