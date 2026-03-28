@@ -1,35 +1,25 @@
 #!/usr/bin/env python3
 import requests
 
-PORT_SERVICE_MAP = {
-    21:   "ftp",
-    22:   "ssh",
-    23:   "telnet",
-    25:   "smtp",
-    53:   "dns",
-    80:   "http",
-    110:  "pop3",
-    143:  "imap",
-    443:  "ssl",
-    445:  "smb",
-    3306: "mysql",
-    3389: "rdp",
-    5900: "vnc",
-    8080: "http",
-    8443: "https",
-}
 
-
-def lookup_cve(port, max_results=3):
+def lookup_cve(port, service=None, product=None, max_results=3):
     """
     Query the NVD API for CVEs related to the service on the given port.
+    Uses the nmap-detected service/product name when available.
     Returns a list of dicts with id, severity, description.
     """
-    service = PORT_SERVICE_MAP.get(port, f"port{port}")
+    # Build the best possible search keyword:
+    # prefer product name (e.g. "OpenSSH") > service name (e.g. "ssh") > skip unknown ports
+    if product and product.strip():
+        keyword = product.strip()
+    elif service and service.strip() and service.strip() not in ("unknown", "tcpwrapped"):
+        keyword = service.strip()
+    else:
+        return []
     results = []
     try:
         resp = requests.get(
-            f"https://services.nvd.nist.gov/rest/json/cves/2.0?keywordSearch={service}",
+            f"https://services.nvd.nist.gov/rest/json/cves/2.0?keywordSearch={keyword}",
             timeout=10,
         )
         resp.raise_for_status()
@@ -48,7 +38,7 @@ def lookup_cve(port, max_results=3):
                 severity = metrics["cvssMetricV31"][0]["cvssData"]["baseSeverity"]
             elif metrics.get("cvssMetricV2"):
                 severity = metrics["cvssMetricV2"][0]["baseSeverity"]
-            results.append({"id": cve_id, "severity": severity, "description": desc, "service": service})
+            results.append({"id": cve_id, "severity": severity, "description": desc, "service": keyword})
     except Exception:
         pass
     return results

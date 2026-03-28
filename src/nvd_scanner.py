@@ -57,7 +57,7 @@ def run_nvd_scan(network_range=None):
             print(f"\n  [Port {port}/tcp]  {label}")
             print(f"  --- CVE Lookup (NVD) ---")
 
-            cves = lookup_cve(port)
+            cves = lookup_cve(port, service=service, product=product)
             if not cves:
                 print("  No CVE results found for this port.")
             for cve in cves:
