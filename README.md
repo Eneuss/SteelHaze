@@ -28,15 +28,43 @@ SteelHazeV2/
 
 ---
 
-## How to Run
+## Dependencies
 
-### First time setup
+### System packages (install once with apt)
+
+```bash
+sudo apt install nmap samba-common-bin avahi-utils avahi-daemon python3-dev
+```
+
+| Package | What it's used for |
+|---|---|
+| `nmap` | Network scanning — finds all live hosts |
+| `samba-common-bin` | Provides `nmblookup` — resolves NetBIOS names (Windows PCs, printers, NAS) |
+| `avahi-utils` | Provides `avahi-resolve` — resolves mDNS names (Apple devices, Linux, some IoT) |
+| `avahi-daemon` | Background service required for mDNS resolution to work |
+| `python3-dev` | Required to compile some Python packages (like netifaces) |
+
+> **Note:** `nmap` also provides the MAC vendor database used to identify device manufacturers (e.g. "Apple, Inc.", "Samsung Electronics") when no hostname can be found.
+
+### Python packages (install once with pip)
 
 ```bash
 cd /home/eneus/Desktop/SteelHazeV2
 python3 -m venv venv
 venv/bin/pip install -r requirements.txt
 ```
+
+| Package | What it's used for |
+|---|---|
+| `flask` | Web server for the dashboard |
+| `python-nmap` | Python wrapper around the nmap binary |
+| `netifaces` | Reads network interface info (IP, gateway, subnet) |
+| `requests` | HTTP calls to the NVD API for CVE lookups |
+| `scapy` | Packet sniffer for traffic monitoring |
+
+---
+
+## How to Run
 
 ### Normal mode (recommended — needs root for packet sniffing)
 

@@ -7,7 +7,34 @@ import subprocess
 from datetime import datetime
 
 
-def resolve_hostname(ip, nmap_hostname=""):
+_mac_vendor_cache = {}
+
+def _load_mac_vendors():
+    """Load nmap's MAC prefix database into memory (runs once)."""
+    if _mac_vendor_cache:
+        return
+    try:
+        with open("/usr/share/nmap/nmap-mac-prefixes", "r") as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#"):
+                    parts = line.split(None, 1)
+                    if len(parts) == 2:
+                        _mac_vendor_cache[parts[0].upper()] = parts[1]
+    except Exception:
+        pass
+
+
+def lookup_mac_vendor(mac):
+    """Return the vendor name for a MAC address, or None if unknown."""
+    if not mac or mac == "N/A":
+        return None
+    _load_mac_vendors()
+    prefix = mac.replace(":", "").replace("-", "").upper()[:6]
+    return _mac_vendor_cache.get(prefix)
+
+
+def resolve_hostname(ip, mac="", nmap_hostname=""):
     """Try multiple methods to resolve a hostname for the given IP."""
     # 1. Use nmap's result if it got something useful
     if nmap_hostname and nmap_hostname.lower() not in ("", "unknown"):
@@ -47,6 +74,11 @@ def resolve_hostname(ip, nmap_hostname=""):
                 return name
     except Exception:
         pass
+
+    # 5. MAC vendor fallback — at least shows the manufacturer
+    vendor = lookup_mac_vendor(mac)
+    if vendor:
+        return vendor
 
     return "Unknown"
 
@@ -104,10 +136,11 @@ def scan_network(network_range=None):
     for host in nm.all_hosts():
         hostnames = nm[host].get("hostnames", [{}])
         nmap_hostname = hostnames[0].get("name", "") if hostnames else ""
-        hostname = resolve_hostname(host, nmap_hostname)
+        mac = nm[host]["addresses"].get("mac", "N/A")
+        hostname = resolve_hostname(host, mac, nmap_hostname)
         device = {
             "ip": host,
-            "mac": nm[host]["addresses"].get("mac", "N/A"),
+            "mac": mac,
             "hostname": hostname,
             "status": nm[host]["status"]["state"],
             "timestamp": datetime.now().isoformat(),
