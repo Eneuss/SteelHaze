@@ -22,11 +22,9 @@ def run_nvd_scan(network_range=None):
     nm = nmap.PortScanner()
     nm.scan(
         hosts=network_range,
-        arguments="-sV -T4 --open -p 21,22,23,25,53,80,110,143,443,445,3306,3389,5900,8080,8443",
+        arguments="-p- -sV -T4 --open",
     )
 
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
     found = 0
 
     for host in nm.all_hosts():
@@ -39,6 +37,8 @@ def run_nvd_scan(network_range=None):
         mac = nm[host]["addresses"].get("mac", "N/A")
 
         # Resolve device_id from DB
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
         cursor.execute("SELECT device_id FROM device_network WHERE ip = ? ORDER BY last_seen DESC LIMIT 1", (host,))
         row = cursor.fetchone()
         device_id = row[0] if row else None
@@ -72,8 +72,9 @@ def run_nvd_scan(network_range=None):
                     ''', (device_id, host, port, label, cve["id"], cve["severity"],
                           cve["description"], datetime.now()))
 
-    conn.commit()
-    conn.close()
+        # Commit after each host so findings appear in the dashboard immediately
+        conn.commit()
+        conn.close()
 
     if found == 0:
         print("[SteelHaze] No devices with open ports found on the network.")

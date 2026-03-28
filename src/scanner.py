@@ -49,10 +49,12 @@ def scan_network(network_range=None):
     print(f"[{datetime.now().strftime('%H:%M:%S')}] Scanning {network_range}...")
 
     nm = nmap.PortScanner()
-    # -sn: ping scan (finds all hosts, not just those with open ports)
-    # -T4: faster timing
-    # --min-parallelism 10: speed up ARP/ICMP probes
-    nm.scan(hosts=network_range, arguments="-sn -T4 --min-parallelism 10")
+    # -p-               : scan all 65535 ports
+    # -sV               : detect service versions on open ports
+    # -O                : OS detection
+    # -T4               : aggressive timing
+    # --min-parallelism 10 : speed up probes
+    nm.scan(hosts=network_range, arguments="-p- -sV -O -T4 --min-parallelism 10")
 
     devices = []
     for host in nm.all_hosts():
