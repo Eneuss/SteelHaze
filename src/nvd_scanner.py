@@ -20,10 +20,14 @@ def run_nvd_scan(network_range=None):
     print("[SteelHaze] Detecting open ports and service versions (this may take a while)...\n")
 
     nm = nmap.PortScanner()
-    nm.scan(
-        hosts=network_range,
-        arguments="-sV -T4 --open -p-",
-    )
+    try:
+        nm.scan(
+            hosts=network_range,
+            arguments="-sV -T4 --open -p- --host-timeout 10m",
+        )
+    except Exception as e:
+        print(f"[SteelHaze] CVE scan error: {e}")
+        return
 
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()

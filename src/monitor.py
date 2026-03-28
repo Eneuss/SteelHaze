@@ -139,8 +139,11 @@ def save_traffic_stats(network_id):
 
 def deep_scan_loop(interval=1800):
     while True:
-        print(f"[{datetime.now().strftime('%H:%M:%S')}] Starting scheduled deep CVE scan...")
-        run_nvd_scan()
+        try:
+            print(f"[{datetime.now().strftime('%H:%M:%S')}] Starting scheduled deep CVE scan...")
+            run_nvd_scan()
+        except Exception as e:
+            print(f"[{datetime.now().strftime('%H:%M:%S')}] Deep scan error: {e}")
         time.sleep(interval)
 
 
