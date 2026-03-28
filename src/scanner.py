@@ -2,7 +2,53 @@
 import nmap
 import netifaces
 import ipaddress
+import socket
+import subprocess
 from datetime import datetime
+
+
+def resolve_hostname(ip, nmap_hostname=""):
+    """Try multiple methods to resolve a hostname for the given IP."""
+    # 1. Use nmap's result if it got something useful
+    if nmap_hostname and nmap_hostname.lower() not in ("", "unknown"):
+        return nmap_hostname
+
+    # 2. Reverse DNS
+    try:
+        name = socket.gethostbyaddr(ip)[0]
+        if name and name != ip:
+            return name
+    except Exception:
+        pass
+
+    # 3. NetBIOS (good for Windows, printers, NAS)
+    try:
+        result = subprocess.run(
+            ["nmblookup", "-A", ip], capture_output=True, text=True, timeout=3
+        )
+        for line in result.stdout.splitlines():
+            line = line.strip()
+            if line and not line.startswith("Looking") and "<00>" in line:
+                name = line.split()[0].strip()
+                if name and name != ip:
+                    return name
+    except Exception:
+        pass
+
+    # 4. mDNS via avahi (good for Apple, IoT, Linux devices)
+    try:
+        result = subprocess.run(
+            ["avahi-resolve", "-a", ip], capture_output=True, text=True, timeout=3
+        )
+        parts = result.stdout.strip().split()
+        if len(parts) >= 2:
+            name = parts[1].rstrip(".")
+            if name and name != ip:
+                return name
+    except Exception:
+        pass
+
+    return "Unknown"
 
 
 def get_local_network():
@@ -57,11 +103,12 @@ def scan_network(network_range=None):
     devices = []
     for host in nm.all_hosts():
         hostnames = nm[host].get("hostnames", [{}])
-        hostname = hostnames[0].get("name", "") if hostnames else ""
+        nmap_hostname = hostnames[0].get("name", "") if hostnames else ""
+        hostname = resolve_hostname(host, nmap_hostname)
         device = {
             "ip": host,
             "mac": nm[host]["addresses"].get("mac", "N/A"),
-            "hostname": hostname or "Unknown",
+            "hostname": hostname,
             "status": nm[host]["status"]["state"],
             "timestamp": datetime.now().isoformat(),
         }
