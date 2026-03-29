@@ -9,9 +9,6 @@ def init_database():
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
 
-    # WAL mode: allows concurrent reads while a write is in progress
-    cursor.execute("PRAGMA journal_mode=WAL")
-
     # If old schema (no networks table), wipe and recreate
     cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='networks'")
     if not cursor.fetchone():
@@ -20,13 +17,6 @@ def init_database():
             os.remove(DB_PATH)
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
-        cursor.execute("PRAGMA journal_mode=WAL")
-
-    # Migrate: drop cve_findings if it still has the old UNIQUE constraint
-    cursor.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='cve_findings'")
-    row = cursor.fetchone()
-    if row and 'UNIQUE' in row[0]:
-        cursor.execute("DROP TABLE cve_findings")
 
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS networks (
@@ -110,18 +100,6 @@ def init_database():
     ''')
 
     cursor.execute('''
-        CREATE TABLE IF NOT EXISTS open_ports (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            device_id INTEGER,
-            ip TEXT,
-            port INTEGER,
-            service TEXT,
-            scan_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (device_id) REFERENCES devices(id)
-        )
-    ''')
-
-    cursor.execute('''
         CREATE TABLE IF NOT EXISTS cve_findings (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             device_id INTEGER,
@@ -132,7 +110,8 @@ def init_database():
             severity TEXT,
             description TEXT,
             timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (device_id) REFERENCES devices(id)
+            FOREIGN KEY (device_id) REFERENCES devices(id),
+            UNIQUE(device_id, port, cve_id)
         )
     ''')
 

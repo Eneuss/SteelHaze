@@ -61,7 +61,7 @@ def get_stats():
         "SELECT COUNT(*) FROM anomalies WHERE timestamp > datetime('now', '-24 hours')"
     ).fetchone()[0]
     cve_count = conn.execute(
-        "SELECT COUNT(*) FROM cve_findings"
+        "SELECT COUNT(*) FROM cve_findings WHERE timestamp > datetime('now', '-7 days')"
     ).fetchone()[0]
     conn.close()
     return jsonify({
@@ -145,56 +145,18 @@ def get_anomalies():
     return jsonify([dict(r) for r in rows])
 
 
-@app.route('/api/ports_and_cves')
-def get_ports_and_cves():
+@app.route('/api/cves')
+def get_cves():
     conn = db()
-
-    ports = conn.execute('''
-        SELECT p.ip, d.hostname, p.port, p.service
-        FROM open_ports p
-        LEFT JOIN devices d ON p.device_id = d.id
-        ORDER BY p.ip, p.port
+    rows = conn.execute('''
+        SELECT f.ip, d.hostname, f.port, f.service, f.cve_id, f.severity, f.description, f.timestamp
+        FROM cve_findings f
+        LEFT JOIN devices d ON f.device_id = d.id
+        ORDER BY f.timestamp DESC
+        LIMIT 100
     ''').fetchall()
-
-    cves = conn.execute('''
-        SELECT ip, port, cve_id, severity, description
-        FROM cve_findings
-        ORDER BY ip, port
-    ''').fetchall()
-
     conn.close()
-
-    # Index CVEs by (ip, port)
-    cve_map = {}
-    for c in cves:
-        key = (c['ip'], c['port'])
-        cve_map.setdefault(key, []).append({
-            'cve_id': c['cve_id'],
-            'severity': c['severity'],
-            'description': c['description'],
-        })
-
-    # Build per-IP structure
-    hosts = {}
-    for p in ports:
-        ip = p['ip']
-        if ip not in hosts:
-            hosts[ip] = {'ip': ip, 'hostname': p['hostname'] or '—', 'vulnerable_ports': [], 'clean_ports': []}
-        port_cves = cve_map.get((ip, p['port']), [])
-        entry = {'port': p['port'], 'service': p['service']}
-        if port_cves:
-            entry['cves'] = port_cves
-            hosts[ip]['vulnerable_ports'].append(entry)
-        else:
-            hosts[ip]['clean_ports'].append(entry)
-
-    # Sort hosts by IP
-    import socket
-    def ip_sort(h):
-        try: return socket.inet_aton(h['ip'])
-        except: return b''
-    result = sorted(hosts.values(), key=ip_sort)
-    return jsonify(result)
+    return jsonify([dict(r) for r in rows])
 
 
 @app.route('/api/acknowledge_anomaly/<int:anomaly_id>', methods=['POST'])

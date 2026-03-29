@@ -13,6 +13,7 @@
     header { background: #161b22; border-bottom: 1px solid #30363d; padding: 14px 24px; display: flex; align-items: center; gap: 12px; }
     header h1 { font-size: 1.3rem; font-weight: 700; color: #58a6ff; letter-spacing: 1px; }
     header span { font-size: .8rem; color: #8b949e; }
+    #refresh-timer { margin-left: auto; font-size: .8rem; color: #8b949e; }
 
     /* Layout */
     main { max-width: 1400px; margin: 0 auto; padding: 20px; }
@@ -73,27 +74,6 @@
     .sev-LOW      { color: #3fb950; }
     .sev-UNKNOWN  { color: #8b949e; }
 
-    /* CVE per-IP layout */
-    .host-block { background: #161b22; border: 1px solid #30363d; border-radius: 8px; margin-bottom: 16px; overflow: hidden; }
-    .host-header { padding: 12px 16px; background: #1c2128; border-bottom: 1px solid #30363d; display: flex; align-items: center; gap: 10px; }
-    .host-ip { font-size: 1rem; font-weight: 700; color: #58a6ff; font-family: monospace; }
-    .host-name { font-size: .85rem; color: #8b949e; }
-    .host-body { padding: 12px 16px; display: flex; flex-direction: column; gap: 10px; }
-    .port-block { border: 1px solid #30363d; border-radius: 6px; overflow: hidden; }
-    .port-header { padding: 8px 12px; background: #21262d; display: flex; align-items: center; gap: 8px; font-size: .85rem; }
-    .port-header.has-cves { background: #2d1b1b; border-bottom: 1px solid #3d2020; }
-    .port-num { font-family: monospace; font-weight: 700; color: #c9d1d9; }
-    .port-service { color: #8b949e; font-size: .8rem; }
-    .cve-list { padding: 0; }
-    .cve-row { padding: 8px 12px; border-top: 1px solid #21262d; display: grid; grid-template-columns: 160px 90px 1fr; gap: 10px; align-items: start; font-size: .82rem; }
-    .cve-row:hover { background: #1c2128; }
-    .cve-id a { color: #58a6ff; text-decoration: none; font-family: monospace; }
-    .cve-id a:hover { text-decoration: underline; }
-    .cve-desc { color: #8b949e; line-height: 1.4; }
-    .clean-ports-section { padding: 8px 12px; }
-    .clean-ports-label { font-size: .75rem; color: #8b949e; text-transform: uppercase; letter-spacing: .4px; margin-bottom: 6px; }
-    .clean-port-tag { display: inline-block; margin: 3px 4px 3px 0; padding: 2px 8px; background: #21262d; border: 1px solid #30363d; border-radius: 4px; font-size: .78rem; color: #8b949e; font-family: monospace; }
-
     /* Responsive */
     @media (max-width: 700px) { .stats-grid { grid-template-columns: 1fr 1fr; } }
   </style>
@@ -103,7 +83,7 @@
 <header>
   <h1>SteelHaze V2</h1>
   <span>Network Security Monitor</span>
-  <span id="refresh-timer" style="margin-left:auto;font-size:.8rem;color:#8b949e">Updated: <b id="last-updated">—</b></span>
+  <span id="refresh-timer">Refreshing in <b id="countdown">30</b>s</span>
 </header>
 
 <main>
@@ -167,7 +147,15 @@
 
   <!-- CVE Findings -->
   <div class="tab-content" id="tab-cves">
-    <div id="cves-container"><div class="empty" style="padding:32px;text-align:center;color:#8b949e">No CVE data yet. Deep scanner runs automatically every 30 minutes.</div></div>
+    <div class="card">
+      <div class="card-header">CVE findings from deep scan (run <code>python src/nvd_scanner.py</code>)</div>
+      <table>
+        <thead><tr>
+          <th>IP</th><th>Hostname</th><th>Port</th><th>Service</th><th>CVE ID</th><th>Severity</th><th>Description</th>
+        </tr></thead>
+        <tbody id="cves-body"><tr><td colspan="7" class="empty">No CVE data yet. Run the deep scanner to populate.</td></tr></tbody>
+      </table>
+    </div>
   </div>
 
   <!-- Timeline -->
@@ -290,51 +278,19 @@ async function loadAnomalies() {
 }
 
 // ─── CVEs ─────────────────────────────────────────────────────────────────────
-const SEV_ORDER = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3, UNKNOWN: 4 };
 async function loadCVEs() {
-  const data = await fetch('/api/ports_and_cves').then(r => r.json());
-  const container = document.getElementById('cves-container');
-  if (!data.length) {
-    container.innerHTML = '<div class="empty" style="padding:32px;text-align:center;color:#8b949e">No CVE data yet. Deep scanner runs automatically every 30 minutes.</div>';
-    return;
-  }
-  container.innerHTML = data.map(host => {
-    const vulnPortsHtml = host.vulnerable_ports.map(p => {
-      const sorted = [...p.cves].sort((a, b) => (SEV_ORDER[a.severity] ?? 4) - (SEV_ORDER[b.severity] ?? 4));
-      const cveRows = sorted.map(c => `
-        <div class="cve-row">
-          <div class="cve-id"><a href="https://nvd.nist.gov/vuln/detail/${c.cve_id}" target="_blank">${c.cve_id}</a></div>
-          <div><span class="sev-${c.severity}">${c.severity}</span></div>
-          <div class="cve-desc">${c.description}</div>
-        </div>`).join('');
-      return `<div class="port-block">
-        <div class="port-header has-cves">
-          <span class="port-num">${p.port}/tcp</span>
-          <span class="port-service">${p.service}</span>
-          <span class="badge badge-red" style="margin-left:auto">${p.cves.length} CVE${p.cves.length > 1 ? 's' : ''}</span>
-        </div>
-        <div class="cve-list">${cveRows}</div>
-      </div>`;
-    }).join('');
-
-    const cleanHtml = host.clean_ports.length ? `
-      <div class="clean-ports-section">
-        <div class="clean-ports-label">Other open ports (no CVEs found)</div>
-        ${host.clean_ports.map(p => `<span class="clean-port-tag">${p.port}/tcp ${p.service}</span>`).join('')}
-      </div>` : '';
-
-    return `<div class="host-block">
-      <div class="host-header">
-        <span class="host-ip">${host.ip}</span>
-        <span class="host-name">${host.hostname}</span>
-        ${host.vulnerable_ports.length ? `<span class="badge badge-red" style="margin-left:auto">${host.vulnerable_ports.length} vulnerable port${host.vulnerable_ports.length > 1 ? 's' : ''}</span>` : '<span class="badge badge-green" style="margin-left:auto">No vulnerabilities</span>'}
-      </div>
-      <div class="host-body">
-        ${vulnPortsHtml || ''}
-        ${cleanHtml}
-      </div>
-    </div>`;
-  }).join('');
+  const data = await fetch('/api/cves').then(r => r.json());
+  const tbody = document.getElementById('cves-body');
+  if (!data.length) { tbody.innerHTML = '<tr><td colspan="7" class="empty">No CVE data yet. Run: <code>python src/nvd_scanner.py</code></td></tr>'; return; }
+  tbody.innerHTML = data.map(c => `<tr>
+    <td><code>${c.ip}</code></td>
+    <td>${c.hostname || '—'}</td>
+    <td>${c.port}</td>
+    <td>${c.service}</td>
+    <td><a href="https://nvd.nist.gov/vuln/detail/${c.cve_id}" target="_blank" style="color:#58a6ff">${c.cve_id}</a></td>
+    <td><span class="sev-${c.severity}">${c.severity}</span></td>
+    <td style="max-width:400px;font-size:.8rem;color:#8b949e">${c.description}</td>
+  </tr>`).join('');
 }
 
 // ─── Timeline chart ───────────────────────────────────────────────────────────
@@ -376,25 +332,14 @@ function loadAll() {
   loadAnomalies();
   loadCVEs();
   loadTimeline();
-  document.getElementById('last-updated').textContent = new Date().toLocaleTimeString();
 }
 
-// Poll /api/stats every 5s — reload everything only when something changed
-let _lastStats = null;
-async function pollStats() {
-  try {
-    const s = await fetch('/api/stats').then(r => r.json());
-    const key = JSON.stringify(s);
-    if (key !== _lastStats) {
-      _lastStats = key;
-      loadAll();
-    }
-  } catch (_) {}
-}
-
-// Also force a full reload every 60s regardless (catches anything stats polling misses)
-setInterval(loadAll, 60000);
-setInterval(pollStats, 5000);
+let seconds = 30;
+setInterval(() => {
+  seconds--;
+  document.getElementById('countdown').textContent = seconds;
+  if (seconds <= 0) { seconds = 30; loadAll(); }
+}, 1000);
 
 loadAll();
 </script>

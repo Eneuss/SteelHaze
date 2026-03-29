@@ -35,7 +35,7 @@ def get_or_create_network(cursor, network_info):
 
 
 def save_devices(devices, network_info):
-    conn = sqlite3.connect(DB_PATH, timeout=30)
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     new_ips = []
 
@@ -115,7 +115,7 @@ def save_traffic_stats(network_id):
     if not stats:
         return
 
-    conn = sqlite3.connect(DB_PATH, timeout=30)
+    conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
 
     for ip, data in stats.items():
