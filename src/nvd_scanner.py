@@ -34,7 +34,7 @@ def run_nvd_scan(network_range=None):
         print(f"[SteelHaze] CVE scan error: {e}")
         return
 
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, timeout=30)
     cursor = conn.cursor()
     scan_start = datetime.now()
     found = 0
