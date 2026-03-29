@@ -7,7 +7,7 @@ Run this separately from the continuous monitor — it is slow.
 import nmap
 import sqlite3
 from datetime import datetime
-from scanner import get_local_network
+from scanner import get_local_network, get_local_ip
 from nvd_lookup import lookup_cve
 from database import DB_PATH
 
@@ -16,21 +16,27 @@ def run_nvd_scan(network_range=None):
     if network_range is None:
         network_range = get_local_network()
 
+    local_ip = get_local_ip()
+
     print(f"\n[SteelHaze] Deep CVE scan on: {network_range}")
+    if local_ip:
+        print(f"[SteelHaze] Excluding local device: {local_ip}")
     print("[SteelHaze] Detecting open ports and service versions (this may take a while)...\n")
+
+    scan_args = "-sV -T4 --open -p- --host-timeout 10m"
+    if local_ip:
+        scan_args += f" --exclude {local_ip}"
 
     nm = nmap.PortScanner()
     try:
-        nm.scan(
-            hosts=network_range,
-            arguments="-sV -T4 --open -p- --host-timeout 10m",
-        )
+        nm.scan(hosts=network_range, arguments=scan_args)
     except Exception as e:
         print(f"[SteelHaze] CVE scan error: {e}")
         return
 
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, timeout=30)
     cursor = conn.cursor()
+    scan_start = datetime.now()
     found = 0
 
     for host in nm.all_hosts():
@@ -61,6 +67,11 @@ def run_nvd_scan(network_range=None):
             print(f"\n  [Port {port}/tcp]  {label}")
             print(f"  --- CVE Lookup (NVD) ---")
 
+            cursor.execute(
+                "INSERT INTO open_ports (device_id, ip, port, service) VALUES (?, ?, ?, ?)",
+                (device_id, host, port, label)
+            )
+
             cves = lookup_cve(port, service=service, product=product)
             if not cves:
                 print("  No CVE results found for this port.")
@@ -68,14 +79,18 @@ def run_nvd_scan(network_range=None):
                 print(f"  {cve['id']} | {cve['severity']}")
                 print(f"  {cve['description']}\n")
 
-                if device_id:
-                    cursor.execute('''
-                        INSERT OR IGNORE INTO cve_findings
-                            (device_id, ip, port, service, cve_id, severity, description, timestamp)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                    ''', (device_id, host, port, label, cve["id"], cve["severity"],
-                          cve["description"], datetime.now()))
+                cursor.execute('''
+                    INSERT INTO cve_findings
+                        (device_id, ip, port, service, cve_id, severity, description, timestamp)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (device_id, host, port, label, cve["id"], cve["severity"],
+                      cve["description"], datetime.now()))
 
+        conn.commit()  # commit per-device so results appear in dashboard immediately
+
+    # Remove rows from previous scan — new rows are already committed
+    cursor.execute("DELETE FROM cve_findings WHERE timestamp < ?", (scan_start,))
+    cursor.execute("DELETE FROM open_ports WHERE scan_time < ?", (scan_start,))
     conn.commit()
     conn.close()
 

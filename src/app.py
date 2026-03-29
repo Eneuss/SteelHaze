@@ -61,7 +61,7 @@ def get_stats():
         "SELECT COUNT(*) FROM anomalies WHERE timestamp > datetime('now', '-24 hours')"
     ).fetchone()[0]
     cve_count = conn.execute(
-        "SELECT COUNT(*) FROM cve_findings WHERE timestamp > datetime('now', '-7 days')"
+        "SELECT COUNT(*) FROM cve_findings"
     ).fetchone()[0]
     conn.close()
     return jsonify({
@@ -145,18 +145,76 @@ def get_anomalies():
     return jsonify([dict(r) for r in rows])
 
 
-@app.route('/api/cves')
-def get_cves():
+@app.route('/api/ports_and_cves')
+def get_ports_and_cves():
+    import socket
     conn = db()
-    rows = conn.execute('''
-        SELECT f.ip, d.hostname, f.port, f.service, f.cve_id, f.severity, f.description, f.timestamp
+
+    # CVE findings are always available — use as primary source
+    cves = conn.execute('''
+        SELECT f.ip, d.hostname, f.port, f.service, f.cve_id, f.severity, f.description
         FROM cve_findings f
         LEFT JOIN devices d ON f.device_id = d.id
-        ORDER BY f.timestamp DESC
-        LIMIT 100
+        ORDER BY f.ip, f.port
     ''').fetchall()
+
+    # Open ports (populated after first scan with new code — may be empty)
+    ports = conn.execute('''
+        SELECT p.ip, d.hostname, p.port, p.service
+        FROM open_ports p
+        LEFT JOIN devices d ON p.device_id = d.id
+        ORDER BY p.ip, p.port
+    ''').fetchall()
+
     conn.close()
-    return jsonify([dict(r) for r in rows])
+
+    SEV_ORDER = {'CRITICAL': 0, 'HIGH': 1, 'MEDIUM': 2, 'LOW': 3}
+    hosts = {}
+
+    # Build from CVE findings first — always works even on first run
+    for c in cves:
+        ip = c['ip']
+        if ip not in hosts:
+            hosts[ip] = {'ip': ip, 'hostname': c['hostname'] or '—', 'ports': {}}
+        if ip not in hosts or c['port'] not in hosts[ip]['ports']:
+            hosts[ip]['ports'][c['port']] = {'service': c['service'], 'cves': []}
+        hosts[ip]['ports'][c['port']]['cves'].append({
+            'cve_id': c['cve_id'],
+            'severity': c['severity'],
+            'description': c['description'],
+        })
+
+    # Merge open_ports — adds clean ports and fills in any missing hosts
+    for p in ports:
+        ip = p['ip']
+        if ip not in hosts:
+            hosts[ip] = {'ip': ip, 'hostname': p['hostname'] or '—', 'ports': {}}
+        if p['port'] not in hosts[ip]['ports']:
+            hosts[ip]['ports'][p['port']] = {'service': p['service'], 'cves': []}
+
+    # Build final sorted structure
+    result = []
+    for host in hosts.values():
+        vulnerable, clean = [], []
+        for port, data in sorted(host['ports'].items()):
+            entry = {'port': port, 'service': data['service']}
+            if data['cves']:
+                entry['cves'] = sorted(data['cves'], key=lambda c: SEV_ORDER.get(c['severity'], 4))
+                vulnerable.append(entry)
+            else:
+                clean.append(entry)
+        result.append({
+            'ip': host['ip'],
+            'hostname': host['hostname'],
+            'vulnerable_ports': vulnerable,
+            'clean_ports': clean,
+        })
+
+    def ip_sort(h):
+        try: return socket.inet_aton(h['ip'])
+        except: return b''
+
+    return jsonify(sorted(result, key=ip_sort))
 
 
 @app.route('/api/acknowledge_anomaly/<int:anomaly_id>', methods=['POST'])
