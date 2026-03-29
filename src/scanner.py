@@ -11,20 +11,6 @@ def get_local_network():
     return get_network_info()["subnet"]
 
 
-def get_local_ip():
-    """Return the local IP address of this machine."""
-    try:
-        gateways = netifaces.gateways()
-        default = gateways.get("default", {}).get(netifaces.AF_INET)
-        if not default:
-            return None
-        iface = default[1]
-        addrs = netifaces.ifaddresses(iface).get(netifaces.AF_INET, [{}])[0]
-        return addrs.get("addr")
-    except Exception:
-        return None
-
-
 def get_network_info():
     """Return current network metadata: gateway, subnet, interface, ssid."""
     try:
