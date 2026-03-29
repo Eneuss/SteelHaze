@@ -100,6 +100,18 @@ def init_database():
     ''')
 
     cursor.execute('''
+        CREATE TABLE IF NOT EXISTS open_ports (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            device_id INTEGER,
+            ip TEXT,
+            port INTEGER,
+            service TEXT,
+            scan_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (device_id) REFERENCES devices(id)
+        )
+    ''')
+
+    cursor.execute('''
         CREATE TABLE IF NOT EXISTS cve_findings (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             device_id INTEGER,
@@ -110,8 +122,7 @@ def init_database():
             severity TEXT,
             description TEXT,
             timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (device_id) REFERENCES devices(id),
-            UNIQUE(device_id, port, cve_id)
+            FOREIGN KEY (device_id) REFERENCES devices(id)
         )
     ''')
 
