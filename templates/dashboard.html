@@ -13,6 +13,7 @@
     header { background: #161b22; border-bottom: 1px solid #30363d; padding: 14px 24px; display: flex; align-items: center; gap: 12px; }
     header h1 { font-size: 1.3rem; font-weight: 700; color: #58a6ff; letter-spacing: 1px; }
     header span { font-size: .8rem; color: #8b949e; }
+    #refresh-timer { margin-left: auto; font-size: .8rem; color: #8b949e; }
 
     /* Layout */
     main { max-width: 1400px; margin: 0 auto; padding: 20px; }
@@ -103,7 +104,7 @@
 <header>
   <h1>SteelHaze V2</h1>
   <span>Network Security Monitor</span>
-  <span id="refresh-timer" style="margin-left:auto;font-size:.8rem;color:#8b949e">Updated: <b id="last-updated">—</b></span>
+  <span id="refresh-timer">Refreshing in <b id="countdown">30</b>s</span>
 </header>
 
 <main>
@@ -376,25 +377,14 @@ function loadAll() {
   loadAnomalies();
   loadCVEs();
   loadTimeline();
-  document.getElementById('last-updated').textContent = new Date().toLocaleTimeString();
 }
 
-// Poll /api/stats every 5s — reload everything only when something changed
-let _lastStats = null;
-async function pollStats() {
-  try {
-    const s = await fetch('/api/stats').then(r => r.json());
-    const key = JSON.stringify(s);
-    if (key !== _lastStats) {
-      _lastStats = key;
-      loadAll();
-    }
-  } catch (_) {}
-}
-
-// Also force a full reload every 60s regardless (catches anything stats polling misses)
-setInterval(loadAll, 60000);
-setInterval(pollStats, 5000);
+let seconds = 30;
+setInterval(() => {
+  seconds--;
+  document.getElementById('countdown').textContent = seconds;
+  if (seconds <= 0) { seconds = 30; loadAll(); }
+}, 1000);
 
 loadAll();
 </script>
