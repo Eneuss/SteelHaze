@@ -10,6 +10,7 @@ from datetime import datetime
 from scanner import get_local_network, get_local_ip
 from nvd_lookup import lookup_cve
 from database import DB_PATH
+from anomaly_detector import save_cve_anomaly
 
 
 def run_nvd_scan(network_range=None):
@@ -78,6 +79,9 @@ def run_nvd_scan(network_range=None):
             for cve in cves:
                 print(f"  {cve['id']} | {cve['severity']}")
                 print(f"  {cve['description']}\n")
+
+                if cve['severity'] in ('CRITICAL', 'HIGH'):
+                    save_cve_anomaly(host, hostname, mac, cve['id'], cve['severity'], cve['description'])
 
                 cursor.execute('''
                     INSERT INTO cve_findings

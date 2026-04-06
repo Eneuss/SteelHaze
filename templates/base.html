@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SteelHaze V2 - {% block title %}{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+  {% block head %}{% endblock %}
+</head>
+<body>
+
+<!-- header -->
+<header>
+  <h1>SteelHaze V2</h1>
+  <span class="subtitle">Network Security Monitor</span>
+  <span id="refresh-timer">Refreshing in <b id="countdown">30</b>s</span>
+</header>
+
+<!-- nav -->
+<nav>
+  <a href="{{ url_for('devices') }}"   class="{{ 'active' if active == 'devices' }}">Devices</a>
+  <a href="{{ url_for('traffic') }}"   class="{{ 'active' if active == 'traffic' }}">Traffic</a>
+  <a href="{{ url_for('anomalies') }}" class="{{ 'active' if active == 'anomalies' }}">Anomalies</a>
+  <a href="{{ url_for('cves') }}"      class="{{ 'active' if active == 'cves' }}">CVE Findings</a>
+  <a href="{{ url_for('timeline') }}"  class="{{ 'active' if active == 'timeline' }}">Timeline</a>
+</nav>
+
+<main>
+  <!-- stats bar -->
+  <div class="stats-grid">
+    <div class="stat-card blue">  <div class="label">Total Devices</div> <div class="value" id="stat-total">—</div></div>
+    <div class="stat-card green"> <div class="label">Active Now</div>    <div class="value" id="stat-active">—</div></div>
+    <div class="stat-card yellow"><div class="label">Unknown</div>       <div class="value" id="stat-unknown">—</div></div>
+    <div class="stat-card red">   <div class="label">Anomalies (24h)</div><div class="value" id="stat-anomalies">—</div></div>
+    <div class="stat-card purple"><div class="label">CVEs Found</div>    <div class="value" id="stat-cves">—</div></div>
+  </div>
+
+  <!-- page content goes here -->
+  {% block content %}{% endblock %}
+</main>
+
+<!-- shared js helpers -->
+<script>
+function fmtBytes(b) {
+  if (b == null) return '—';
+  if (b < 1024)       return b + ' B';
+  if (b < 1048576)    return (b / 1024).toFixed(1) + ' KB';
+  if (b < 1073741824) return (b / 1048576).toFixed(1) + ' MB';
+  return (b / 1073741824).toFixed(2) + ' GB';
+}
+function fmtTime(s)  { return s ? new Date(s).toLocaleString()     : '—'; }
+function fmtShort(s) { return s ? new Date(s).toLocaleTimeString() : '—'; }
+
+async function loadStats() {
+  const d = await fetch('/api/stats').then(r => r.json());
+  document.getElementById('stat-total').textContent     = d.total;
+  document.getElementById('stat-active').textContent    = d.active;
+  document.getElementById('stat-unknown').textContent   = d.unknown;
+  document.getElementById('stat-anomalies').textContent = d.anomalies;
+  document.getElementById('stat-cves').textContent      = d.cves;
+}
+
+if (!localStorage.getItem('lastRefresh')) {
+  localStorage.setItem('lastRefresh', Date.now());
+}
+const lastRefresh = parseInt(localStorage.getItem('lastRefresh'));
+const elapsed = Math.floor((Date.now() - lastRefresh) / 1000);
+let seconds = elapsed >= 30 ? 1 : Math.max(1, 30 - elapsed);
+document.getElementById('countdown').textContent = seconds;
+
+setInterval(() => {
+  seconds--;
+  document.getElementById('countdown').textContent = seconds;
+  if (seconds <= 0) {
+    seconds = 30;
+    localStorage.setItem('lastRefresh', Date.now());
+    loadStats();
+    loadPage();
+  }
+}, 1000);
+
+loadStats();
+</script>
+
+<!-- page specific js goes here -->
+{% block scripts %}{% endblock %}
+
+</body>
+</html>

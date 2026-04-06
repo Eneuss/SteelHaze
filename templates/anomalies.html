@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}Anomalies{% endblock %}
+
+{% block content %}
+<!-- anomalies -->
+<div id="anomalies-container">
+  <div class="empty">Loading...</div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const ANOMALY_BADGE = {
+  HIGH_TRAFFIC: 'badge-red',
+  ODD_HOURS:    'badge-yellow',
+  NEW_DEVICE:   'badge-purple',
+  CVE_FOUND:    'badge-red',
+};
+
+const PREVIEW = 3;
+
+function toggleAnomalies(btn, key) {
+  const extra = document.getElementById('extra-' + key);
+  const expanded = extra.style.display !== 'none';
+  extra.style.display = expanded ? 'none' : 'block';
+  btn.textContent = expanded ? btn.dataset.more : 'Show less';
+}
+
+async function loadPage() {
+  const data = await fetch('/api/anomalies').then(r => r.json());
+  const container = document.getElementById('anomalies-container');
+
+  if (!data.length) {
+    container.innerHTML = '<div class="empty">No anomalies in the last 24h.</div>';
+    return;
+  }
+
+  // group by ip, fallback to mac
+  const grouped = {};
+  for (const a of data) {
+    const key = a.ip || a.mac || 'unknown';
+    if (!grouped[key]) grouped[key] = { ip: a.ip, hostname: a.hostname, items: [] };
+    grouped[key].items.push(a);
+  }
+
+  function rowHtml(a) {
+    const cls = ANOMALY_BADGE[a.type] || 'badge-grey';
+    return `<div class="anomaly-row">
+      <span class="badge ${cls}">${a.type}</span>
+      <span class="anomaly-time">${fmtShort(a.timestamp)}</span>
+      <span class="anomaly-details">${a.details}</span>
+    </div>`;
+  }
+
+  container.innerHTML = Object.values(grouped).map((device, i) => {
+    const key = i;
+    const total = device.items.length;
+    const preview = device.items.slice(0, PREVIEW);
+    const extra   = device.items.slice(PREVIEW);
+    const remaining = extra.length;
+
+    const headerBadge = `<span class="badge badge-red" style="margin-left:auto">${total} event${total > 1 ? 's' : ''}</span>`;
+
+    const extraHtml = remaining > 0
+      ? `<div id="extra-${key}" style="display:none">${extra.map(rowHtml).join('')}</div>
+         <button class="btn anomaly-expand" data-more="Show ${remaining} more" onclick="toggleAnomalies(this,'${key}')">Show ${remaining} more</button>`
+      : '';
+
+    return `<div class="host-block">
+      <div class="host-header">
+        <span class="host-ip">${device.ip || '—'}</span>
+        <span class="host-name">${device.hostname || '—'}</span>
+        ${headerBadge}
+      </div>
+      <div class="host-body">
+        ${preview.map(rowHtml).join('')}
+        ${extraHtml}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+loadPage();
+</script>
+{% endblock %}

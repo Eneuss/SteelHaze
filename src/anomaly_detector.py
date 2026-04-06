@@ -5,7 +5,7 @@ from database import DB_PATH
 
 
 def detect_anomalies():
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, timeout=30)
     cursor = conn.cursor()
     anomalies = []
 
@@ -73,7 +73,7 @@ def detect_anomalies():
 
 
 def save_anomaly(anomaly):
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, timeout=30)
     cursor = conn.cursor()
     cursor.execute('''
         INSERT INTO anomalies (type, ip, mac, hostname, details, timestamp)
@@ -87,4 +87,24 @@ def save_anomaly(anomaly):
         datetime.now(),
     ))
     conn.commit()
+    conn.close()
+
+
+def save_cve_anomaly(ip, hostname, mac, cve_id, severity, description):
+    conn = sqlite3.connect(DB_PATH, timeout=30)
+    cursor = conn.cursor()
+    # skip if same CVE already logged for this IP in the last 24h
+    cursor.execute('''
+        SELECT COUNT(*) FROM anomalies
+        WHERE type = 'CVE_FOUND' AND ip = ?
+        AND details LIKE ?
+        AND timestamp > datetime('now', '-24 hours')
+    ''', (ip, f"{cve_id}%"))
+    if cursor.fetchone()[0] == 0:
+        details = f"{cve_id} ({severity}): {description[:120]}"
+        cursor.execute('''
+            INSERT INTO anomalies (type, ip, mac, hostname, details, timestamp)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ''', ('CVE_FOUND', ip, mac or '', hostname or 'Unknown', details, datetime.now()))
+        conn.commit()
     conn.close()

@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}Timeline{% endblock %}
+
+{% block head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<!-- timeline chart -->
+<div class="card">
+  <div class="card-header">Unique devices per day — last 7 days</div>
+  <div class="chart-wrap">
+    <canvas id="timeline-chart"></canvas>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let chart = null;
+
+async function loadPage() {
+  const data = await fetch('/api/timeline').then(r => r.json());
+
+  if (chart) chart.destroy();
+
+  const ctx = document.getElementById('timeline-chart').getContext('2d');
+  chart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: data.map(d => d.date),
+      datasets: [{
+        label: 'Unique Devices',
+        data: data.map(d => d.device_count),
+        backgroundColor: '#1f6feb',
+        borderRadius: 4,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { color: '#8b949e' }, grid: { color: '#21262d' } },
+        y: { ticks: { color: '#8b949e', stepSize: 1 }, grid: { color: '#21262d' }, beginAtZero: true }
+      }
+    }
+  });
+}
+
+loadPage();
+</script>
+{% endblock %}

@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block title %}Devices{% endblock %}
+
+{% block content %}
+<!-- devices table -->
+<div class="card">
+  <div class="card-header">Devices seen in the last 24 hours</div>
+  <table>
+    <thead>
+      <tr>
+        <th>IP</th><th>MAC</th><th>Hostname</th>
+        <th>First Seen</th><th>Last Seen</th><th>Status</th><th>Action</th>
+      </tr>
+    </thead>
+    <tbody id="devices-body">
+      <tr><td colspan="7" class="empty">Loading...</td></tr>
+    </tbody>
+  </table>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function timeAgo(dateStr) {
+  if (!dateStr) return '—';
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1)  return 'just now';
+  if (mins < 60) return mins + 'm ago';
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24)  return hrs + 'h ago';
+  const days = Math.floor(hrs / 24);
+  return days + 'd ago';
+}
+
+function lastSeenClass(dateStr) {
+  const mins = Math.floor((Date.now() - new Date(dateStr).getTime()) / 60000);
+  if (mins < 5)  return 'time-active';
+  if (mins < 60) return 'time-recent';
+  return 'time-stale';
+}
+
+async function loadPage() {
+  const devices = await fetch('/api/devices').then(r => r.json());
+  const tbody = document.getElementById('devices-body');
+
+  if (!devices.length) {
+    tbody.innerHTML = '<tr><td colspan="7" class="empty">No devices found in the last 24h.</td></tr>';
+    return;
+  }
+
+  const now = Date.now();
+  devices.sort((a, b) => {
+    const aActive = (now - new Date(a.last_seen).getTime()) < 300000;
+    const bActive = (now - new Date(b.last_seen).getTime()) < 300000;
+    if (aActive !== bActive) return aActive ? -1 : 1;
+    return new Date(b.last_seen) - new Date(a.last_seen);
+  });
+
+  tbody.innerHTML = devices.map(d => {
+    const active = (now - new Date(d.last_seen).getTime()) < 300000;
+    const dot = `<span class="status-dot ${active ? 'dot-active' : 'dot-offline'}"></span>`;
+    const knownBadge = d.is_known
+      ? '<span class="badge badge-green">Known</span>'
+      : '<span class="badge badge-yellow">Unknown</span>';
+    const action = d.is_known || !d.mac || d.mac === 'N/A' ? '' :
+      `<button class="btn" onclick="markKnown('${d.mac}')">Mark Known</button>`;
+    const lsCls = lastSeenClass(d.last_seen);
+    return `<tr>
+      <td>${dot}<code>${d.ip}</code></td>
+      <td><code>${d.mac || '—'}</code></td>
+      <td>${d.hostname || '—'}</td>
+      <td>
+        <span class="time-rel">${timeAgo(d.first_seen)}</span>
+        <span class="time-abs">${fmtTime(d.first_seen)}</span>
+      </td>
+      <td>
+        <span class="time-rel ${lsCls}">${timeAgo(d.last_seen)}</span>
+        <span class="time-abs">${fmtTime(d.last_seen)}</span>
+      </td>
+      <td>${knownBadge}</td>
+      <td>${action}</td>
+    </tr>`;
+  }).join('');
+}
+
+async function markKnown(mac) {
+  await fetch('/api/mark_known/' + encodeURIComponent(mac), { method: 'POST' });
+  loadPage();
+  loadStats();
+}
+
+loadPage();
+</script>
+{% endblock %}

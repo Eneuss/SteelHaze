@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Traffic{% endblock %}
+
+{% block content %}
+<!-- traffic table -->
+<div class="card">
+  <div class="card-header">Bandwidth usage — last 24 hours</div>
+  <table>
+    <thead>
+      <tr>
+        <th>IP</th><th>Hostname</th><th>Sent</th><th>Received</th><th>Total</th><th>Packets</th>
+      </tr>
+    </thead>
+    <tbody id="traffic-body">
+      <tr><td colspan="6" class="empty">Loading...</td></tr>
+    </tbody>
+  </table>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function loadPage() {
+  const data = await fetch('/api/traffic').then(r => r.json());
+  const tbody = document.getElementById('traffic-body');
+
+  if (!data.length) {
+    tbody.innerHTML = '<tr><td colspan="6" class="empty">No traffic data. Requires scapy + root.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = data.map(t => `<tr>
+    <td><code>${t.ip}</code></td>
+    <td>${t.hostname || '—'}</td>
+    <td>${fmtBytes(t.bytes_sent)}</td>
+    <td>${fmtBytes(t.bytes_received)}</td>
+    <td><strong>${fmtBytes(t.total_bytes)}</strong></td>
+    <td>${t.packets?.toLocaleString() || '—'}</td>
+  </tr>`).join('');
+}
+
+loadPage();
+</script>
+{% endblock %}

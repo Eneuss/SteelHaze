@@ -16,14 +16,30 @@ app = Flask(
 
 
 def db():
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, timeout=30)
     conn.row_factory = sqlite3.Row
     return conn
 
 
 @app.route('/')
-def index():
-    return render_template('dashboard.html')
+def devices():
+    return render_template('devices.html', active='devices')
+
+@app.route('/traffic')
+def traffic():
+    return render_template('traffic.html', active='traffic')
+
+@app.route('/anomalies')
+def anomalies():
+    return render_template('anomalies.html', active='anomalies')
+
+@app.route('/cves')
+def cves():
+    return render_template('cves.html', active='cves')
+
+@app.route('/timeline')
+def timeline():
+    return render_template('timeline.html', active='timeline')
 
 
 @app.route('/api/devices')
