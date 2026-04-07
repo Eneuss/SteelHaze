@@ -2,20 +2,9 @@
 {% block title %}Devices{% endblock %}
 
 {% block content %}
-<!-- devices table -->
-<div class="card">
-  <div class="card-header">Devices seen in the last 24 hours</div>
-  <table>
-    <thead>
-      <tr>
-        <th>IP</th><th>MAC</th><th>Hostname</th>
-        <th>First Seen</th><th>Last Seen</th><th>Status</th><th>Action</th>
-      </tr>
-    </thead>
-    <tbody id="devices-body">
-      <tr><td colspan="7" class="empty">Loading...</td></tr>
-    </tbody>
-  </table>
+<!-- per-interface device sections -->
+<div id="interfaces-container">
+  <div class="empty">Loading...</div>
 </div>
 {% endblock %}
 
@@ -29,8 +18,7 @@ function timeAgo(dateStr) {
   if (mins < 60) return mins + 'm ago';
   const hrs = Math.floor(mins / 60);
   if (hrs < 24)  return hrs + 'h ago';
-  const days = Math.floor(hrs / 24);
-  return days + 'd ago';
+  return Math.floor(hrs / 24) + 'd ago';
 }
 
 function lastSeenClass(dateStr) {
@@ -40,54 +28,139 @@ function lastSeenClass(dateStr) {
   return 'time-stale';
 }
 
-async function loadPage() {
-  const devices = await fetch('/api/devices').then(r => r.json());
-  const tbody = document.getElementById('devices-body');
+const sid = mac => (mac || '').replace(/:/g, '');
 
-  if (!devices.length) {
-    tbody.innerHTML = '<tr><td colspan="7" class="empty">No devices found in the last 24h.</td></tr>';
+const STATUS_BADGE = {
+  scanning:   '<span class="badge badge-yellow">Scanning…</span>',
+  done:       '<span class="badge badge-green">Done</span>',
+  no_devices: '<span class="badge badge-grey">No devices</span>',
+  error:      '<span class="badge badge-red">Error</span>',
+  idle:       '<span class="badge badge-grey">Idle</span>',
+};
+
+function showMarkKnown(mac) {
+  const s = sid(mac);
+  document.getElementById('ac-' + s).innerHTML =
+    `<input type="text" id="li-${s}" class="label-input" placeholder="Label (optional)" />
+     <button class="btn btn-confirm" onclick="confirmMarkKnown('${mac}')">Confirm</button>
+     <button class="btn" onclick="loadPage()">Cancel</button>`;
+  document.getElementById('li-' + s).focus();
+}
+
+async function confirmMarkKnown(mac) {
+  const label = document.getElementById('li-' + sid(mac)).value.trim();
+  await fetch('/api/mark_known/' + encodeURIComponent(mac), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ label: label || null }),
+  });
+  loadPage();
+  loadStats();
+}
+
+function showEditLabel(mac, current) {
+  const s = sid(mac);
+  document.getElementById('lc-' + s).innerHTML =
+    `<input type="text" id="le-${s}" class="label-input" value="${current || ''}" placeholder="Label" />
+     <button class="btn btn-confirm" onclick="saveLabel('${mac}')">Save</button>
+     <button class="btn" onclick="loadPage()">Cancel</button>`;
+  document.getElementById('le-' + s).focus();
+}
+
+async function saveLabel(mac) {
+  const label = document.getElementById('le-' + sid(mac)).value.trim();
+  await fetch('/api/set_label/' + encodeURIComponent(mac), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ label: label || null }),
+  });
+  loadPage();
+}
+
+function deviceRow(d) {
+  const now = Date.now();
+  const active = (now - new Date(d.last_seen).getTime()) < 300000;
+  const dot = `<span class="status-dot ${active ? 'dot-active' : 'dot-offline'}"></span>`;
+  const knownBadge = d.is_known
+    ? '<span class="badge badge-green">Known</span>'
+    : '<span class="badge badge-yellow">Unknown</span>';
+  const lsCls = lastSeenClass(d.last_seen);
+  const s = sid(d.mac || '');
+
+  const labelCell = d.is_known
+    ? `<td id="lc-${s}">
+         <span class="device-label">${d.label || '<span class="no-label">—</span>'}</span>
+         <span class="edit-icon" onclick="showEditLabel('${d.mac}', '${(d.label || '').replace(/'/g, "\\'")}')">✎</span>
+       </td>`
+    : `<td id="lc-${s}"></td>`;
+
+  const actionCell = d.is_known || !d.mac || d.mac === 'N/A'
+    ? `<td id="ac-${s}"></td>`
+    : `<td id="ac-${s}"><button class="btn" onclick="showMarkKnown('${d.mac}')">Mark Known</button></td>`;
+
+  return `<tr>
+    <td>${dot}<code>${d.ip}</code></td>
+    <td><code>${d.mac || '—'}</code></td>
+    ${labelCell}
+    <td>
+      <span class="time-rel">${timeAgo(d.first_seen)}</span>
+      <span class="time-abs">${fmtTime(d.first_seen)}</span>
+    </td>
+    <td>
+      <span class="time-rel ${lsCls}">${timeAgo(d.last_seen)}</span>
+      <span class="time-abs">${fmtTime(d.last_seen)}</span>
+    </td>
+    <td>${knownBadge}</td>
+    ${actionCell}
+  </tr>`;
+}
+
+async function loadPage() {
+  const data = await fetch('/api/interfaces').then(r => r.json());
+  const container = document.getElementById('interfaces-container');
+  const ifaces = Object.keys(data);
+
+  if (!ifaces.length) {
+    container.innerHTML = '<div class="empty">Waiting for first scan…</div>';
     return;
   }
 
-  const now = Date.now();
-  devices.sort((a, b) => {
-    const aActive = (now - new Date(a.last_seen).getTime()) < 300000;
-    const bActive = (now - new Date(b.last_seen).getTime()) < 300000;
-    if (aActive !== bActive) return aActive ? -1 : 1;
-    return new Date(b.last_seen) - new Date(a.last_seen);
-  });
+  container.innerHTML = ifaces.map(iface => {
+    const info = data[iface];
+    const badge = STATUS_BADGE[info.status] || STATUS_BADGE.idle;
+    const errorNote = info.error
+      ? `<div class="iface-error">Error: ${info.error}</div>`
+      : '';
 
-  tbody.innerHTML = devices.map(d => {
-    const active = (now - new Date(d.last_seen).getTime()) < 300000;
-    const dot = `<span class="status-dot ${active ? 'dot-active' : 'dot-offline'}"></span>`;
-    const knownBadge = d.is_known
-      ? '<span class="badge badge-green">Known</span>'
-      : '<span class="badge badge-yellow">Unknown</span>';
-    const action = d.is_known || !d.mac || d.mac === 'N/A' ? '' :
-      `<button class="btn" onclick="markKnown('${d.mac}')">Mark Known</button>`;
-    const lsCls = lastSeenClass(d.last_seen);
-    return `<tr>
-      <td>${dot}<code>${d.ip}</code></td>
-      <td><code>${d.mac || '—'}</code></td>
-      <td>${d.hostname || '—'}</td>
-      <td>
-        <span class="time-rel">${timeAgo(d.first_seen)}</span>
-        <span class="time-abs">${fmtTime(d.first_seen)}</span>
-      </td>
-      <td>
-        <span class="time-rel ${lsCls}">${timeAgo(d.last_seen)}</span>
-        <span class="time-abs">${fmtTime(d.last_seen)}</span>
-      </td>
-      <td>${knownBadge}</td>
-      <td>${action}</td>
-    </tr>`;
+    const now = Date.now();
+    const devices = (info.devices || []).sort((a, b) => {
+      const aA = (now - new Date(a.last_seen).getTime()) < 300000;
+      const bA = (now - new Date(b.last_seen).getTime()) < 300000;
+      if (aA !== bA) return aA ? -1 : 1;
+      return new Date(b.last_seen) - new Date(a.last_seen);
+    });
+
+    const tableHtml = devices.length
+      ? `<table>
+           <thead><tr>
+             <th>IP</th><th>MAC</th><th>Label</th>
+             <th>First Seen</th><th>Last Seen</th><th>Status</th><th>Action</th>
+           </tr></thead>
+           <tbody>${devices.map(deviceRow).join('')}</tbody>
+         </table>`
+      : `<div class="empty" style="padding:16px">${info.status === 'error' ? 'Scan failed.' : 'No devices found yet.'}</div>`;
+
+    return `<div class="card" style="margin-bottom:20px">
+      <div class="card-header iface-header">
+        <span class="iface-name">${iface}</span>
+        <span class="iface-subnet">${info.subnet || ''}</span>
+        ${badge}
+        <span class="iface-count">${devices.length} device${devices.length !== 1 ? 's' : ''}</span>
+      </div>
+      ${errorNote}
+      ${tableHtml}
+    </div>`;
   }).join('');
-}
-
-async function markKnown(mac) {
-  await fetch('/api/mark_known/' + encodeURIComponent(mac), { method: 'POST' });
-  loadPage();
-  loadStats();
 }
 
 loadPage();

@@ -3,10 +3,11 @@ import sys
 import os
 sys.path.insert(0, os.path.dirname(__file__))
 
-from flask import Flask, render_template, jsonify
+from flask import Flask, render_template, jsonify, request
 import sqlite3
 from datetime import datetime, timedelta
 from database import DB_PATH
+import scan_state
 
 app = Flask(
     __name__,
@@ -46,7 +47,7 @@ def timeline():
 def get_devices():
     conn = db()
     rows = conn.execute('''
-        SELECT d.mac, d.hostname, d.first_seen,
+        SELECT d.mac, d.label, d.first_seen,
                dn.ip, dn.last_seen, dn.is_known
         FROM devices d
         JOIN device_network dn ON d.id = dn.device_id
@@ -89,13 +90,108 @@ def get_stats():
     })
 
 
+@app.route('/api/interfaces')
+def get_interfaces():
+    state = scan_state.get_all()
+    conn  = db()
+
+    # Pull all devices seen in the last 24h with their most recent interface
+    rows = conn.execute('''
+        SELECT d.mac, d.label, d.first_seen,
+               dn.ip, dn.last_seen, dn.is_known, n.interface
+        FROM devices d
+        JOIN device_network dn ON d.id = dn.device_id
+        JOIN networks n ON dn.network_id = n.id
+        WHERE dn.last_seen > datetime('now', '-24 hours')
+        AND dn.id = (
+            SELECT id FROM device_network
+            WHERE device_id = d.id
+            ORDER BY last_seen DESC LIMIT 1
+        )
+        ORDER BY dn.last_seen DESC
+    ''').fetchall()
+    conn.close()
+
+    # Index for enriching active scan_state devices
+    db_by_mac  = {}
+    db_by_ip   = {}
+    # Group by interface for offline device detection
+    db_by_iface = {}
+    for r in rows:
+        row = dict(r)
+        if r['mac']:
+            db_by_mac[r['mac']] = row
+        db_by_ip[r['ip']] = row
+        db_by_iface.setdefault(r['interface'], []).append(row)
+
+    if not state:
+        return jsonify({})
+
+    result = {}
+    for iface, s in sorted(state.items()):
+        raw_devices = s.get('devices', [])
+
+        active_ips  = {d.get('ip')  for d in raw_devices}
+        active_macs = {d.get('mac') for d in raw_devices if d.get('mac')}
+
+        def enrich(d):
+            meta = db_by_mac.get(d.get('mac')) or db_by_ip.get(d.get('ip')) or {}
+            return {
+                'ip':         d.get('ip'),
+                'mac':        d.get('mac') or meta.get('mac') or '—',
+                'label':      meta.get('label'),
+                'is_known':   meta.get('is_known', 0),
+                'first_seen': meta.get('first_seen'),
+                'last_seen':  meta.get('last_seen'),
+            }
+
+        active = [enrich(d) for d in raw_devices]
+
+        # Offline: seen in last 24h on this interface, not in the current scan
+        offline = [
+            {
+                'ip':         r['ip'],
+                'mac':        r['mac'] or '—',
+                'label':      r['label'],
+                'is_known':   r['is_known'],
+                'first_seen': r['first_seen'],
+                'last_seen':  r['last_seen'],
+            }
+            for r in db_by_iface.get(iface, [])
+            if r['ip'] not in active_ips
+            and (not r['mac'] or r['mac'] not in active_macs)
+        ]
+
+        result[iface] = {
+            'subnet':  s.get('subnet', ''),
+            'status':  s.get('status', 'idle'),
+            'error':   s.get('error'),
+            'devices': active + offline,
+        }
+    return jsonify(result)
+
+
 @app.route('/api/mark_known/<mac>', methods=['POST'])
 def mark_known(mac):
+    body = request.get_json(silent=True) or {}
+    label = (body.get('label') or '').strip() or None
     conn = db()
     row = conn.execute('SELECT id FROM devices WHERE mac = ?', (mac,)).fetchone()
     if row:
         conn.execute('UPDATE device_network SET is_known = 1 WHERE device_id = ?', (row[0],))
+        conn.execute('UPDATE devices SET label = ? WHERE id = ?', (label, row[0]))
         conn.commit()
+    conn.close()
+    return jsonify({'success': True})
+
+
+@app.route('/api/set_label/<mac>', methods=['POST'])
+def set_label(mac):
+    body = request.get_json(silent=True) or {}
+    label = (body.get('label') or '').strip() or None
+    conn = db()
+    conn.execute('UPDATE devices SET label = ? WHERE mac = ?', (label, mac))
+    conn.commit()
     conn.close()
     return jsonify({'success': True})
 
@@ -104,7 +200,7 @@ def mark_known(mac):
 def get_traffic():
     conn = db()
     rows = conn.execute('''
-        SELECT dn.ip, d.mac, d.hostname,
+        SELECT dn.ip, d.mac, d.label,
                SUM(t.bytes_sent)     AS total_sent,
                SUM(t.bytes_received) AS total_received,
                SUM(t.packets)        AS total_packets,
@@ -123,7 +219,7 @@ def get_traffic():
             result.append({
                 'ip': r['ip'],
                 'mac': r['mac'],
-                'hostname': r['hostname'],
+                'label': r['label'],
                 'bytes_sent': r['total_sent'],
                 'bytes_received': r['total_received'],
                 'total_bytes': r['total_sent'] + r['total_received'],
@@ -151,10 +247,11 @@ def get_timeline():
 def get_anomalies():
     conn = db()
     rows = conn.execute('''
-        SELECT type, ip, mac, hostname, details, timestamp, acknowledged
-        FROM anomalies
-        WHERE timestamp > datetime('now', '-24 hours')
-        ORDER BY timestamp DESC
+        SELECT a.type, a.ip, a.mac, d.label, a.details, a.timestamp, a.acknowledged
+        FROM anomalies a
+        LEFT JOIN devices d ON a.mac = d.mac AND a.mac != ''
+        WHERE a.timestamp > datetime('now', '-24 hours')
+        ORDER BY a.timestamp DESC
         LIMIT 50
     ''').fetchall()
     conn.close()
@@ -168,19 +265,26 @@ def get_ports_and_cves():
 
     # CVE findings are always available — use as primary source
     cves = conn.execute('''
-        SELECT f.ip, d.hostname, f.port, f.service, f.cve_id, f.severity, f.description
+        SELECT f.ip, f.port, f.service, f.cve_id, f.severity, f.description
         FROM cve_findings f
-        LEFT JOIN devices d ON f.device_id = d.id
         ORDER BY f.ip, f.port
     ''').fetchall()
 
     # Open ports (populated after first scan with new code — may be empty)
     ports = conn.execute('''
-        SELECT p.ip, d.hostname, p.port, p.service
+        SELECT p.ip, p.port, p.service
         FROM open_ports p
-        LEFT JOIN devices d ON p.device_id = d.id
         ORDER BY p.ip, p.port
     ''').fetchall()
+
+    # mac + label lookup by IP
+    device_info = {}
+    for r in conn.execute('''
+        SELECT dn.ip, d.mac, d.label
+        FROM device_network dn JOIN devices d ON dn.device_id = d.id
+    ''').fetchall():
+        if r['ip'] not in device_info:
+            device_info[r['ip']] = {'mac': r['mac'], 'label': r['label']}
 
     conn.close()
 
@@ -191,8 +295,9 @@ def get_ports_and_cves():
     for c in cves:
         ip = c['ip']
         if ip not in hosts:
-            hosts[ip] = {'ip': ip, 'hostname': c['hostname'] or '—', 'ports': {}}
-        if ip not in hosts or c['port'] not in hosts[ip]['ports']:
+            info = device_info.get(ip, {})
+            hosts[ip] = {'ip': ip, 'mac': info.get('mac'), 'label': info.get('label'), 'ports': {}}
+        if c['port'] not in hosts[ip]['ports']:
             hosts[ip]['ports'][c['port']] = {'service': c['service'], 'cves': []}
         hosts[ip]['ports'][c['port']]['cves'].append({
             'cve_id': c['cve_id'],
@@ -204,7 +309,8 @@ def get_ports_and_cves():
     for p in ports:
         ip = p['ip']
         if ip not in hosts:
-            hosts[ip] = {'ip': ip, 'hostname': p['hostname'] or '—', 'ports': {}}
+            info = device_info.get(ip, {})
+            hosts[ip] = {'ip': ip, 'mac': info.get('mac'), 'label': info.get('label'), 'ports': {}}
         if p['port'] not in hosts[ip]['ports']:
             hosts[ip]['ports'][p['port']] = {'service': p['service'], 'cves': []}
 
@@ -221,7 +327,8 @@ def get_ports_and_cves():
                 clean.append(entry)
         result.append({
             'ip': host['ip'],
-            'hostname': host['hostname'],
+            'mac': host['mac'],
+            'label': host['label'],
             'vulnerable_ports': vulnerable,
             'clean_ports': clean,
         })
@@ -231,6 +338,36 @@ def get_ports_and_cves():
         except: return b''
 
     return jsonify(sorted(result, key=ip_sort))
+
+
+@app.route('/api/chart/cve_severity')
+def chart_cve_severity():
+    conn = db()
+    rows = conn.execute('''
+        SELECT severity, COUNT(*) AS count
+        FROM cve_findings
+        GROUP BY severity
+    ''').fetchall()
+    conn.close()
+    result = {'CRITICAL': 0, 'HIGH': 0, 'MEDIUM': 0, 'LOW': 0, 'UNKNOWN': 0}
+    for r in rows:
+        sev = (r['severity'] or 'UNKNOWN').upper()
+        result[sev] = result.get(sev, 0) + r['count']
+    return jsonify(result)
+
+
+@app.route('/api/chart/anomalies_per_day')
+def chart_anomalies_per_day():
+    conn = db()
+    rows = conn.execute('''
+        SELECT DATE(timestamp) AS date, COUNT(*) AS count
+        FROM anomalies
+        WHERE timestamp > datetime('now', '-7 days')
+        GROUP BY DATE(timestamp)
+        ORDER BY date ASC
+    ''').fetchall()
+    conn.close()
+    return jsonify([dict(r) for r in rows])
 
 
 @app.route('/api/acknowledge_anomaly/<int:anomaly_id>', methods=['POST'])

@@ -2,31 +2,40 @@
 """
 Deep CVE scan: detects open ports + service versions on all hosts,
 queries the NVD API, and saves findings to the database.
-Run this separately from the continuous monitor — it is slow.
 """
 import nmap
 import sqlite3
 from datetime import datetime
-from scanner import get_local_network, get_local_ip
+from scanner import get_local_network, get_local_ip, get_local_ips
 from nvd_lookup import lookup_cve
 from database import DB_PATH
 from anomaly_detector import save_cve_anomaly
+
+
+def _db():
+    conn = sqlite3.connect(DB_PATH, timeout=30)
+    conn.execute("PRAGMA journal_mode=WAL")
+    return conn
 
 
 def run_nvd_scan(network_range=None):
     if network_range is None:
         network_range = get_local_network()
 
-    local_ip = get_local_ip()
+    # Collect all local IPs across every interface so none get self-scanned
+    local_ips = get_local_ips()
+    fallback = get_local_ip()
+    if fallback and fallback not in local_ips:
+        local_ips.append(fallback)
 
     print(f"\n[SteelHaze] Deep CVE scan on: {network_range}")
-    if local_ip:
-        print(f"[SteelHaze] Excluding local device: {local_ip}")
+    if local_ips:
+        print(f"[SteelHaze] Excluding local device IPs: {', '.join(local_ips)}")
     print("[SteelHaze] Detecting open ports and service versions (this may take a while)...\n")
 
     scan_args = "-sV -T4 --open -p- --host-timeout 10m"
-    if local_ip:
-        scan_args += f" --exclude {local_ip}"
+    if local_ips:
+        scan_args += f" --exclude {','.join(local_ips)}"
 
     nm = nmap.PortScanner()
     try:
@@ -35,8 +44,6 @@ def run_nvd_scan(network_range=None):
         print(f"[SteelHaze] CVE scan error: {e}")
         return
 
-    conn = sqlite3.connect(DB_PATH, timeout=30)
-    cursor = conn.cursor()
     scan_start = datetime.now()
     found = 0
 
@@ -49,22 +56,29 @@ def run_nvd_scan(network_range=None):
         hostname = nm[host].hostname() or "Unknown"
         mac = nm[host]["addresses"].get("mac", "N/A")
 
-        # Resolve device_id from DB
-        cursor.execute("SELECT device_id FROM device_network WHERE ip = ? ORDER BY last_seen DESC LIMIT 1", (host,))
-        row = cursor.fetchone()
-        device_id = row[0] if row else None
-
         print(f"{'='*60}")
         print(f"  Host  : {host}  ({hostname})")
         print(f"  MAC   : {mac}")
         print(f"  Ports : {list(tcp_ports.keys())}")
         print(f"{'='*60}")
 
+        # Short-lived connection per host — releases the write lock between hosts
+        # so the monitor loop can write in between without hitting a busy error.
+        conn = _db()
+        cursor = conn.cursor()
+
+        cursor.execute(
+            "SELECT device_id FROM device_network WHERE ip = ? ORDER BY last_seen DESC LIMIT 1",
+            (host,)
+        )
+        row = cursor.fetchone()
+        device_id = row[0] if row else None
+
         for port, data in tcp_ports.items():
             service = data.get("name", "unknown")
             product = data.get("product", "")
             version = data.get("version", "")
-            label = f"{service} {product} {version}".strip()
+            label   = f"{service} {product} {version}".strip()
             print(f"\n  [Port {port}/tcp]  {label}")
             print(f"  --- CVE Lookup (NVD) ---")
 
@@ -79,10 +93,6 @@ def run_nvd_scan(network_range=None):
             for cve in cves:
                 print(f"  {cve['id']} | {cve['severity']}")
                 print(f"  {cve['description']}\n")
-
-                if cve['severity'] in ('CRITICAL', 'HIGH'):
-                    save_cve_anomaly(host, hostname, mac, cve['id'], cve['severity'], cve['description'])
-
                 cursor.execute('''
                     INSERT INTO cve_findings
                         (device_id, ip, port, service, cve_id, severity, description, timestamp)
@@ -90,9 +100,22 @@ def run_nvd_scan(network_range=None):
                 ''', (device_id, host, port, label, cve["id"], cve["severity"],
                       cve["description"], datetime.now()))
 
-        conn.commit()  # commit per-device so results appear in dashboard immediately
+        conn.commit()
+        conn.close()
 
-    # Remove rows from previous scan — new rows are already committed
+        # CVE anomalies saved in a separate short transaction after the host
+        # connection is already closed — avoids nested write overlap.
+        for port, data in tcp_ports.items():
+            service = data.get("name", "unknown")
+            product = data.get("product", "")
+            cves = lookup_cve(port, service=service, product=product)
+            for cve in cves:
+                if cve['severity'] in ('CRITICAL', 'HIGH'):
+                    save_cve_anomaly(host, mac, cve['id'], cve['severity'], cve['description'])
+
+    # Remove rows from the previous scan — all new rows are already committed
+    conn = _db()
+    cursor = conn.cursor()
     cursor.execute("DELETE FROM cve_findings WHERE timestamp < ?", (scan_start,))
     cursor.execute("DELETE FROM open_ports WHERE scan_time < ?", (scan_start,))
     conn.commit()

@@ -26,7 +26,7 @@ def get_local_ip():
 
 
 def get_network_info():
-    """Return metadata for the default gateway interface only (used for DB network records)."""
+    """Return metadata for the default gateway interface."""
     try:
         gateways = netifaces.gateways()
         default = gateways.get("default", {}).get(netifaces.AF_INET)
@@ -51,85 +51,62 @@ def get_network_info():
         return {"gateway_ip": "unknown", "subnet": "192.168.1.0/24", "interface": "unknown", "ssid": None}
 
 
-def get_all_interfaces():
+def scan_all_parallel(on_status=None):
     """
-    Return a list of all active non-loopback interfaces with their subnet.
-    This is what allows scanning both eth0 and wlan0 at the same time.
-    """
-    interfaces = []
-    skip = {"lo"}
+    Scan the network via the default gateway interface. nmap picks the interface
+    automatically based on routing — on this machine that is eth0 (metric 100),
+    which can reach all devices including WiFi clients (AP isolation only blocks
+    WiFi-to-WiFi, not wired-to-WiFi).
 
+    Returns {iface: {subnet, network_info, devices, error}}.
+    Never raises — errors are captured in result['error'].
+    """
+    net    = get_network_info()
+    iface  = net["interface"]
+    subnet = net["subnet"]
+
+    if on_status:
+        on_status(iface, subnet, "scanning", None, None)
+    try:
+        devices = _scan_single(subnet)
+        status  = "done" if devices else "no_devices"
+        if on_status:
+            on_status(iface, subnet, status, None, devices)
+        return {iface: {"subnet": subnet, "network_info": net, "devices": devices, "error": None}}
+    except Exception as e:
+        if on_status:
+            on_status(iface, subnet, "error", str(e), None)
+        return {iface: {"subnet": subnet, "network_info": net, "devices": [], "error": str(e)}}
+
+
+def get_local_ips():
+    """Return all local non-loopback IPv4 addresses (used to exclude self from CVE scans)."""
+    ips = []
     for iface in netifaces.interfaces():
-        if iface in skip:
+        if iface == "lo":
             continue
-        addrs = netifaces.ifaddresses(iface).get(netifaces.AF_INET, [])
-        for addr in addrs:
+        for addr in netifaces.ifaddresses(iface).get(netifaces.AF_INET, []):
             ip = addr.get("addr", "")
-            netmask = addr.get("netmask", "")
-            if not ip or not netmask:
-                continue
-            try:
-                network = ipaddress.IPv4Network(f"{ip}/{netmask}", strict=False)
-                # skip link-local (169.254.x.x) addresses
-                if network.is_link_local:
-                    continue
-                interfaces.append({"interface": iface, "subnet": str(network), "ip": ip})
-            except Exception:
-                continue
-
-    return interfaces
+            if ip:
+                ips.append(ip)
+    return ips
 
 
-def _scan_single(iface, subnet):
-    """Run nmap on one interface/subnet and return discovered devices."""
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] Scanning {subnet} via {iface}...")
+def _scan_single(subnet):
+    """Run nmap on the given subnet, letting the OS pick the best interface."""
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] Scanning {subnet}...")
     nm = nmap.PortScanner()
-    nm.scan(hosts=subnet, arguments=f"-sn -T4 --min-parallelism 10 -e {iface}")
+    nm.scan(hosts=subnet, arguments="-sn -T4 --min-parallelism 10")
 
+    local = set(get_local_ips())
     devices = []
     for host in nm.all_hosts():
-        hostnames = nm[host].get("hostnames", [{}])
-        hostname = hostnames[0].get("name", "") if hostnames else ""
+        if host in local:
+            continue
         devices.append({
-            "ip": host,
-            "mac": nm[host]["addresses"].get("mac", "N/A"),
-            "hostname": hostname or "Unknown",
-            "status": nm[host]["status"]["state"],
+            "ip":        host,
+            "mac":       nm[host]["addresses"].get("mac", "N/A"),
+            "status":    nm[host]["status"]["state"],
             "timestamp": datetime.now().isoformat(),
         })
     return devices
-
-
-def scan_network(network_range=None):
-    """
-    Scan all active interfaces (eth0, wlan0, etc.) so no devices are missed
-    regardless of how this machine is connected. Results are deduplicated by IP.
-    If network_range is given, only that range is scanned (single interface mode).
-    """
-    if network_range is not None:
-        # explicit range requested — fall back to single scan
-        info = get_network_info()
-        devices = _scan_single(info["interface"], network_range)
-        print(f"[{datetime.now().strftime('%H:%M:%S')}] Found {len(devices)} device(s).")
-        return devices
-
-    # scan every active interface
-    interfaces = get_all_interfaces()
-    if not interfaces:
-        interfaces = [{"interface": get_network_info()["interface"], "subnet": get_network_info()["subnet"]}]
-
-    seen_ips = set()
-    all_devices = []
-
-    for iface_info in interfaces:
-        try:
-            results = _scan_single(iface_info["interface"], iface_info["subnet"])
-            for d in results:
-                if d["ip"] not in seen_ips:
-                    seen_ips.add(d["ip"])
-                    all_devices.append(d)
-        except Exception as e:
-            print(f"[scanner] Skipping {iface_info['interface']}: {e}")
-
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] Total devices found: {len(all_devices)}.")
-    return all_devices

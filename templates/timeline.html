@@ -1,48 +1,171 @@
 {% extends "base.html" %}
-{% block title %}Timeline{% endblock %}
+{% block title %}Charts{% endblock %}
 
 {% block head %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 {% endblock %}
 
 {% block content %}
-<!-- timeline chart -->
-<div class="card">
-  <div class="card-header">Unique devices per day — last 7 days</div>
-  <div class="chart-wrap">
-    <canvas id="timeline-chart"></canvas>
+<!-- row 1: devices/day + CVE severity -->
+<div class="charts-row charts-row-main">
+  <div class="card">
+    <div class="card-header">Unique devices per day — last 7 days</div>
+    <div class="chart-wrap-lg"><canvas id="chart-devices"></canvas></div>
+  </div>
+  <div class="card">
+    <div class="card-header">CVE severity breakdown</div>
+    <div class="chart-wrap-lg"><canvas id="chart-cve"></canvas></div>
+  </div>
+</div>
+
+<!-- row 2: top traffic + anomalies/day -->
+<div class="charts-row charts-row-half">
+  <div class="card">
+    <div class="card-header">Top devices by traffic — last 24h</div>
+    <div class="chart-wrap-lg"><canvas id="chart-traffic"></canvas></div>
+  </div>
+  <div class="card">
+    <div class="card-header">Anomalies per day — last 7 days</div>
+    <div class="chart-wrap-lg"><canvas id="chart-anomalies"></canvas></div>
   </div>
 </div>
 {% endblock %}
 
 {% block scripts %}
 <script>
-let chart = null;
+const GRID  = '#21262d';
+const TICKS = '#8b949e';
+
+function fmtMB(b) {
+  if (b >= 1073741824) return (b / 1073741824).toFixed(1) + ' GB';
+  if (b >= 1048576)    return (b / 1048576).toFixed(1)    + ' MB';
+  return (b / 1024).toFixed(0) + ' KB';
+}
+
+let chartDevices = null, chartCVE = null, chartTraffic = null, chartAnomalies = null;
 
 async function loadPage() {
-  const data = await fetch('/api/timeline').then(r => r.json());
+  const [timeline, severity, traffic, anomalies] = await Promise.all([
+    fetch('/api/timeline').then(r => r.json()),
+    fetch('/api/chart/cve_severity').then(r => r.json()),
+    fetch('/api/traffic').then(r => r.json()),
+    fetch('/api/chart/anomalies_per_day').then(r => r.json()),
+  ]);
 
-  if (chart) chart.destroy();
-
-  const ctx = document.getElementById('timeline-chart').getContext('2d');
-  chart = new Chart(ctx, {
+  /* devices per day */
+  if (chartDevices) chartDevices.destroy();
+  chartDevices = new Chart(document.getElementById('chart-devices'), {
     type: 'bar',
     data: {
-      labels: data.map(d => d.date),
+      labels: timeline.map(d => d.date),
       datasets: [{
-        label: 'Unique Devices',
-        data: data.map(d => d.device_count),
+        label: 'Devices',
+        data: timeline.map(d => d.device_count),
         backgroundColor: '#1f6feb',
         borderRadius: 4,
       }]
     },
     options: {
-      responsive: true,
-      maintainAspectRatio: false,
+      responsive: true, maintainAspectRatio: false,
       plugins: { legend: { display: false } },
       scales: {
-        x: { ticks: { color: '#8b949e' }, grid: { color: '#21262d' } },
-        y: { ticks: { color: '#8b949e', stepSize: 1 }, grid: { color: '#21262d' }, beginAtZero: true }
+        x: { ticks: { color: TICKS }, grid: { color: GRID } },
+        y: { ticks: { color: TICKS, stepSize: 1 }, grid: { color: GRID }, beginAtZero: true }
+      }
+    }
+  });
+
+  /* CVE severity doughnut */
+  if (chartCVE) chartCVE.destroy();
+  const sevLabels = ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW', 'UNKNOWN'];
+  const sevColors = ['#f85149', '#e3963e', '#d29922', '#3fb950', '#6e7681'];
+  chartCVE = new Chart(document.getElementById('chart-cve'), {
+    type: 'doughnut',
+    data: {
+      labels: sevLabels,
+      datasets: [{
+        data: sevLabels.map(s => severity[s] || 0),
+        backgroundColor: sevColors.map(c => c + 'bb'),
+        borderColor: sevColors,
+        borderWidth: 1,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          position: 'right',
+          labels: { color: TICKS, padding: 14, font: { size: 12 } }
+        }
+      }
+    }
+  });
+
+  /* top 8 devices by traffic — stacked horizontal bar */
+  if (chartTraffic) chartTraffic.destroy();
+  const top = [...traffic].sort((a, b) => b.total_bytes - a.total_bytes).slice(0, 8);
+  chartTraffic = new Chart(document.getElementById('chart-traffic'), {
+    type: 'bar',
+    data: {
+      labels: top.map(d => d.label || d.mac || d.ip),
+      datasets: [
+        {
+          label: 'Sent',
+          data: top.map(d => d.bytes_sent),
+          backgroundColor: '#58a6ff99',
+          borderColor: '#58a6ff',
+          borderWidth: 1,
+          borderRadius: 3,
+        },
+        {
+          label: 'Received',
+          data: top.map(d => d.bytes_received),
+          backgroundColor: '#3fb95099',
+          borderColor: '#3fb950',
+          borderWidth: 1,
+          borderRadius: 3,
+        }
+      ]
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { labels: { color: TICKS } },
+        tooltip: { callbacks: { label: ctx => ctx.dataset.label + ': ' + fmtMB(ctx.raw) } }
+      },
+      scales: {
+        x: {
+          stacked: true,
+          ticks: { color: TICKS, callback: v => fmtMB(v) },
+          grid: { color: GRID }
+        },
+        y: { stacked: true, ticks: { color: TICKS }, grid: { color: GRID } }
+      }
+    }
+  });
+
+  /* anomalies per day */
+  if (chartAnomalies) chartAnomalies.destroy();
+  chartAnomalies = new Chart(document.getElementById('chart-anomalies'), {
+    type: 'bar',
+    data: {
+      labels: anomalies.map(d => d.date),
+      datasets: [{
+        label: 'Anomalies',
+        data: anomalies.map(d => d.count),
+        backgroundColor: '#f8514999',
+        borderColor: '#f85149',
+        borderWidth: 1,
+        borderRadius: 4,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { color: TICKS }, grid: { color: GRID } },
+        y: { ticks: { color: TICKS, stepSize: 1 }, grid: { color: GRID }, beginAtZero: true }
       }
     }
   });

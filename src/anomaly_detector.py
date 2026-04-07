@@ -9,51 +9,30 @@ def detect_anomalies():
     cursor = conn.cursor()
     anomalies = []
 
-    # 1. High traffic: more than 100 MB in the last minute
+    # 1. High traffic: more than 500 MB in the last 5 minutes
     cursor.execute('''
-        SELECT dn.ip, d.hostname, d.mac,
+        SELECT dn.ip, d.mac,
                SUM(t.bytes_sent + t.bytes_received) AS total_bytes,
                MAX(t.timestamp) AS last_seen
         FROM devices d
         JOIN traffic_stats t ON d.id = t.device_id
         JOIN device_network dn ON d.id = dn.device_id AND t.network_id = dn.network_id
-        WHERE t.timestamp > datetime('now', '-1 minute')
+        WHERE t.timestamp > datetime('now', '-5 minutes')
         GROUP BY d.id
-        HAVING total_bytes > 104857600
+        HAVING total_bytes > 524288000
     ''')
     for row in cursor.fetchall():
         anomalies.append({
             "type": "HIGH_TRAFFIC",
             "ip": row[0],
-            "hostname": row[1] or "Unknown",
-            "mac": row[2],
-            "details": f"High traffic: {row[3] / 1024 / 1024:.2f} MB in 1 minute",
-            "timestamp": row[4],
+            "mac": row[1],
+            "details": f"High traffic: {row[2] / 1024 / 1024:.2f} MB in 5 minutes",
+            "timestamp": row[3],
         })
 
-    # 2. Activity during odd hours (02:00–06:00)
-    current_hour = datetime.now().hour
-    if 2 <= current_hour < 6:
-        cursor.execute('''
-            SELECT dn.ip, d.hostname, d.mac, d.last_seen
-            FROM devices d
-            JOIN device_network dn ON d.id = dn.device_id
-            WHERE d.last_seen > datetime('now', '-5 minutes')
-            AND dn.id = (SELECT id FROM device_network WHERE device_id = d.id ORDER BY last_seen DESC LIMIT 1)
-        ''')
-        for row in cursor.fetchall():
-            anomalies.append({
-                "type": "ODD_HOURS",
-                "ip": row[0],
-                "hostname": row[1] or "Unknown",
-                "mac": row[2],
-                "details": f"Activity detected at {datetime.now().strftime('%H:%M')}",
-                "timestamp": row[3],
-            })
-
-    # 3. New unknown devices (seen in the last 10 minutes, not yet marked known)
+    # 2. New unknown devices (seen in the last 10 minutes, not yet marked known)
     cursor.execute('''
-        SELECT dn.ip, d.hostname, d.mac, dn.first_seen
+        SELECT dn.ip, d.mac, dn.first_seen
         FROM devices d
         JOIN device_network dn ON d.id = dn.device_id
         WHERE dn.is_known = 0 AND dn.first_seen > datetime('now', '-10 minutes')
@@ -62,10 +41,9 @@ def detect_anomalies():
         anomalies.append({
             "type": "NEW_DEVICE",
             "ip": row[0],
-            "hostname": row[1] or "Unknown",
-            "mac": row[2],
+            "mac": row[1],
             "details": "New unrecognised device detected",
-            "timestamp": row[3],
+            "timestamp": row[2],
         })
 
     conn.close()
@@ -76,13 +54,12 @@ def save_anomaly(anomaly):
     conn = sqlite3.connect(DB_PATH, timeout=30)
     cursor = conn.cursor()
     cursor.execute('''
-        INSERT INTO anomalies (type, ip, mac, hostname, details, timestamp)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO anomalies (type, ip, mac, details, timestamp)
+        VALUES (?, ?, ?, ?, ?)
     ''', (
         anomaly["type"],
         anomaly["ip"],
         anomaly.get("mac", ""),
-        anomaly["hostname"],
         anomaly["details"],
         datetime.now(),
     ))
@@ -90,7 +67,7 @@ def save_anomaly(anomaly):
     conn.close()
 
 
-def save_cve_anomaly(ip, hostname, mac, cve_id, severity, description):
+def save_cve_anomaly(ip, mac, cve_id, severity, description):
     conn = sqlite3.connect(DB_PATH, timeout=30)
     cursor = conn.cursor()
     # skip if same CVE already logged for this IP in the last 24h
@@ -103,8 +80,8 @@ def save_cve_anomaly(ip, hostname, mac, cve_id, severity, description):
     if cursor.fetchone()[0] == 0:
         details = f"{cve_id} ({severity}): {description[:120]}"
         cursor.execute('''
-            INSERT INTO anomalies (type, ip, mac, hostname, details, timestamp)
-            VALUES (?, ?, ?, ?, ?, ?)
-        ''', ('CVE_FOUND', ip, mac or '', hostname or 'Unknown', details, datetime.now()))
+            INSERT INTO anomalies (type, ip, mac, details, timestamp)
+            VALUES (?, ?, ?, ?, ?)
+        ''', ('CVE_FOUND', ip, mac or '', details, datetime.now()))
         conn.commit()
     conn.close()
