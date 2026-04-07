@@ -32,10 +32,17 @@ def main():
     init_database()
 
     if '--scan-only' in args:
-        from scanner import scan_network
-        devices = scan_network()
-        for d in devices:
-            print(f"  {d['ip']:<16}  {d['mac']:<20}  {d['hostname']}")
+        from scanner import scan_all_parallel
+        results = scan_all_parallel()
+        for iface, r in sorted(results.items()):
+            print(f"\n[{iface}] {r['subnet']}")
+            if r['error']:
+                print(f"  Error: {r['error']}")
+            elif not r['devices']:
+                print("  No devices found.")
+            else:
+                for d in r['devices']:
+                    print(f"  {d['ip']:<16}  {d['mac']:<20}")
         return
 
     print("=== SteelHaze V2 ===")

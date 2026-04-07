@@ -9,6 +9,12 @@ try:
 except ImportError:
     SCAPY_AVAILABLE = False
 
+try:
+    from scanner import get_all_interfaces
+except Exception:
+    def get_all_interfaces():
+        return []
+
 
 class TrafficMonitor:
     def __init__(self):
@@ -43,17 +49,25 @@ class TrafficMonitor:
             return
         if self.monitoring:
             return
-
-        def _run():
-            print(f"[TrafficMonitor] Listening on interface: {interface or 'default'}")
-            try:
-                sniff(prn=self._packet_handler, store=False, iface=interface)
-            except Exception as e:
-                print(f"[TrafficMonitor] Error: {e}")
-
         self.monitoring = True
-        self._thread = threading.Thread(target=_run, daemon=True)
-        self._thread.start()
+
+        # Determine which interfaces to listen on
+        if interface:
+            ifaces = [interface]
+        else:
+            discovered = [i["interface"] for i in get_all_interfaces()]
+            ifaces = discovered if discovered else [None]
+
+        def _run(iface):
+            print(f"[TrafficMonitor] Listening on interface: {iface or 'default'}")
+            try:
+                sniff(prn=self._packet_handler, store=False, iface=iface)
+            except Exception as e:
+                print(f"[TrafficMonitor] Error on {iface}: {e}")
+
+        for iface in ifaces:
+            t = threading.Thread(target=_run, args=(iface,), daemon=True)
+            t.start()
 
     def get_traffic_stats(self):
         with self._lock:

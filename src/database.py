@@ -6,27 +6,9 @@ DB_PATH = os.path.join(os.path.dirname(__file__), '..', 'steelhaze.db')
 
 
 def init_database():
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, timeout=30)
+    conn.execute("PRAGMA journal_mode=WAL")
     cursor = conn.cursor()
-
-    # WAL mode: readers and writers don't block each other
-    cursor.execute("PRAGMA journal_mode=WAL")
-
-    # If old schema (no networks table), wipe and recreate
-    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='networks'")
-    if not cursor.fetchone():
-        conn.close()
-        if os.path.exists(DB_PATH):
-            os.remove(DB_PATH)
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        cursor.execute("PRAGMA journal_mode=WAL")
-
-    # Migrate: drop cve_findings if it has the old UNIQUE constraint
-    cursor.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='cve_findings'")
-    row = cursor.fetchone()
-    if row and 'UNIQUE' in row[0]:
-        cursor.execute("DROP TABLE cve_findings")
 
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS networks (
@@ -45,11 +27,16 @@ def init_database():
         CREATE TABLE IF NOT EXISTS devices (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             mac TEXT,
-            hostname TEXT,
+            label TEXT,
             first_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     ''')
+
+    # Add label column to existing databases that predate this feature
+    cursor.execute("PRAGMA table_info(devices)")
+    if 'label' not in [row[1] for row in cursor.fetchall()]:
+        cursor.execute("ALTER TABLE devices ADD COLUMN label TEXT")
 
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS device_network (
@@ -100,7 +87,6 @@ def init_database():
             type TEXT NOT NULL,
             ip TEXT,
             mac TEXT,
-            hostname TEXT,
             details TEXT,
             network_id INTEGER,
             timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

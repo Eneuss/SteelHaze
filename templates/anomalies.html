@@ -39,7 +39,7 @@ async function loadPage() {
   const grouped = {};
   for (const a of data) {
     const key = a.ip || a.mac || 'unknown';
-    if (!grouped[key]) grouped[key] = { ip: a.ip, hostname: a.hostname, items: [] };
+    if (!grouped[key]) grouped[key] = { ip: a.ip, mac: a.mac, label: a.label, items: [] };
     grouped[key].items.push(a);
   }
 
@@ -69,7 +69,9 @@ async function loadPage() {
     return `<div class="host-block">
       <div class="host-header">
         <span class="host-ip">${device.ip || '—'}</span>
-        <span class="host-name">${device.hostname || '—'}</span>
+        <span class="host-name">${device.label
+          ? `<span class="device-label">${device.label}</span><span class="mac-sub">${device.mac || ''}</span>`
+          : `<code>${device.mac || '—'}</code>`}</span>
         ${headerBadge}
       </div>
       <div class="host-body">

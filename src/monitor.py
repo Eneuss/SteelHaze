@@ -7,11 +7,12 @@ import os
 from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(__file__))
-from scanner import scan_network, get_network_info
+from scanner import scan_all_parallel
 from database import DB_PATH
 from traffic_monitor import traffic_monitor
 from anomaly_detector import detect_anomalies, save_anomaly
 from nvd_scanner import run_nvd_scan
+import scan_state
 
 
 def get_or_create_network(cursor, network_info):
@@ -44,7 +45,6 @@ def save_devices(devices, network_info):
     for device in devices:
         mac = device["mac"]
         ip = device["ip"]
-        hostname = device["hostname"]
 
         if mac and mac != "N/A":
             cursor.execute("SELECT id FROM devices WHERE mac = ?", (mac,))
@@ -52,14 +52,11 @@ def save_devices(devices, network_info):
             if row:
                 device_id = row[0]
                 cursor.execute(
-                    "UPDATE devices SET last_seen = ?, hostname = ? WHERE id = ?",
-                    (datetime.now(), hostname, device_id)
+                    "UPDATE devices SET last_seen = ? WHERE id = ?",
+                    (datetime.now(), device_id)
                 )
             else:
-                cursor.execute(
-                    "INSERT INTO devices (mac, hostname) VALUES (?, ?)",
-                    (mac, hostname)
-                )
+                cursor.execute("INSERT INTO devices (mac) VALUES (?)", (mac,))
                 device_id = cursor.lastrowid
         else:
             # No MAC — identify by IP within this network
@@ -71,14 +68,11 @@ def save_devices(devices, network_info):
             if row:
                 device_id = row[0]
                 cursor.execute(
-                    "UPDATE devices SET last_seen = ?, hostname = ? WHERE id = ?",
-                    (datetime.now(), hostname, device_id)
+                    "UPDATE devices SET last_seen = ? WHERE id = ?",
+                    (datetime.now(), device_id)
                 )
             else:
-                cursor.execute(
-                    "INSERT INTO devices (mac, hostname) VALUES (?, ?)",
-                    (None, hostname)
-                )
+                cursor.execute("INSERT INTO devices (mac) VALUES (?)", (None,))
                 device_id = cursor.lastrowid
 
         # Find or create device_network entry
@@ -98,7 +92,7 @@ def save_devices(devices, network_info):
                 (device_id, network_id, ip)
             )
             new_ips.append(ip)
-            print(f"[{datetime.now().strftime('%H:%M:%S')}] New device: {ip}  {mac}  {hostname}")
+            print(f"[{datetime.now().strftime('%H:%M:%S')}] New device: {ip}  {mac}")
 
         cursor.execute(
             "INSERT INTO connection_logs (device_id, network_id, ip, status) VALUES (?, ?, ?, ?)",
@@ -110,7 +104,8 @@ def save_devices(devices, network_info):
     return new_ips, network_id
 
 
-def save_traffic_stats(network_id):
+def save_traffic_stats():
+    """Save traffic stats for all tracked IPs, resolving network_id automatically."""
     stats = traffic_monitor.get_traffic_stats()
     if not stats:
         return
@@ -120,8 +115,8 @@ def save_traffic_stats(network_id):
 
     for ip, data in stats.items():
         cursor.execute(
-            "SELECT device_id FROM device_network WHERE ip = ? AND network_id = ?",
-            (ip, network_id)
+            "SELECT device_id, network_id FROM device_network WHERE ip = ? ORDER BY last_seen DESC LIMIT 1",
+            (ip,)
         )
         row = cursor.fetchone()
         if row:
@@ -129,7 +124,7 @@ def save_traffic_stats(network_id):
                 '''INSERT INTO traffic_stats
                    (device_id, network_id, ip, bytes_sent, bytes_received, packets, timestamp)
                    VALUES (?, ?, ?, ?, ?, ?, ?)''',
-                (row[0], network_id, ip, data["bytes_sent"], data["bytes_received"],
+                (row[0], row[1], ip, data["bytes_sent"], data["bytes_received"],
                  data["packets"], datetime.now()),
             )
 
@@ -157,12 +152,18 @@ def monitor_loop(interval=30):
 
     try:
         while True:
-            network_info = get_network_info()
-            devices = scan_network()
-            new_ips, network_id = save_devices(devices, network_info)
-            save_traffic_stats(network_id)
+            results = scan_all_parallel(on_status=scan_state.update)
 
-            for ip in new_ips:
+            all_new_ips = []
+            for iface, result in results.items():
+                if result["error"] or not result["devices"]:
+                    continue
+                new_ips, _ = save_devices(result["devices"], result["network_info"])
+                all_new_ips.extend(new_ips)
+
+            save_traffic_stats()
+
+            for ip in all_new_ips:
                 print(f"[{datetime.now().strftime('%H:%M:%S')}] Triggering CVE scan for new device: {ip}")
                 threading.Thread(target=run_nvd_scan, args=(ip,), daemon=True).start()
 
@@ -173,7 +174,12 @@ def monitor_loop(interval=30):
                     print(f"  [{a['type']}] {a['ip']}  {a['details']}")
                     save_anomaly(a)
 
-            print(f"[{datetime.now().strftime('%H:%M:%S')}] Scan complete. Waiting {interval}s...\n")
+            total = sum(len(r["devices"]) for r in results.values() if not r["error"])
+            iface_summary = ", ".join(
+                f"{iface}({'ok' if not r['error'] else 'err'})"
+                for iface, r in sorted(results.items())
+            )
+            print(f"[{datetime.now().strftime('%H:%M:%S')}] Scan complete: {total} device(s) [{iface_summary}]. Waiting {interval}s...\n")
             time.sleep(interval)
     except KeyboardInterrupt:
         print("\nMonitor stopped.")

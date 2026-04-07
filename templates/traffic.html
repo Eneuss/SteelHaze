@@ -8,7 +8,7 @@
   <table>
     <thead>
       <tr>
-        <th>IP</th><th>Hostname</th><th>Sent</th><th>Received</th><th>Total</th><th>Packets</th>
+        <th>IP</th><th>MAC</th><th>Sent</th><th>Received</th><th>Total</th><th>Packets</th>
       </tr>
     </thead>
     <tbody id="traffic-body">
@@ -31,7 +31,7 @@ async function loadPage() {
 
   tbody.innerHTML = data.map(t => `<tr>
     <td><code>${t.ip}</code></td>
-    <td>${t.hostname || '—'}</td>
+    <td>${t.label ? `<span class="device-label">${t.label}</span> <code class="mac-sub">${t.mac}</code>` : `<code>${t.mac || '—'}</code>`}</td>
     <td>${fmtBytes(t.bytes_sent)}</td>
     <td>${fmtBytes(t.bytes_received)}</td>
     <td><strong>${fmtBytes(t.total_bytes)}</strong></td>
