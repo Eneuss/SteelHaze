@@ -1,8 +1,6 @@
 # SteelHaze V2
 
-Network security monitor with a web dashboard, persistent storage, traffic monitoring, anomaly detection, and CVE lookups.
-
-The original version is at `/home/eneus/Desktop/SteelHaze/steelhaze/` and is unchanged.
+Network security monitor with a web dashboard, persistent storage, passive device detection, traffic monitoring, anomaly detection, and CVE lookups.
 
 ---
 
@@ -11,217 +9,246 @@ The original version is at `/home/eneus/Desktop/SteelHaze/steelhaze/` and is unc
 ```
 SteelHazeV2/
 ├── main.py                  # Entry point
-├── requirements.txt
 ├── steelhaze.db             # SQLite database (auto-created on first run)
 ├── src/
-│   ├── database.py          # DB init (devices, traffic, anomalies, CVE findings)
-│   ├── scanner.py           # Ping scan (-sn), dynamic network detection
-│   ├── monitor.py           # Continuous 30s monitoring loop
-│   ├── traffic_monitor.py   # Scapy packet sniffer (bytes/packets per IP)
-│   ├── anomaly_detector.py  # Detects HIGH_TRAFFIC, ODD_HOURS, NEW_DEVICE
-│   ├── nvd_lookup.py        # NVD API CVE lookup by port
-│   ├── nvd_scanner.py       # Deep service version scan + CVE lookup
-│   └── app.py               # Flask REST API + dashboard server
-└── templates/
-    └── dashboard.html       # Web UI (dark theme, auto-refreshes every 30s)
+│   ├── database.py          # DB schema, init, and migrations
+│   ├── scanner.py           # nmap ping scan, default interface detection
+│   ├── monitor.py           # Main 30s monitoring loop, device/traffic persistence
+│   ├── traffic_monitor.py   # Scapy IP sniffer (bytes/packets per IP)
+│   ├── passive_scanner.py   # Passive ARP sniffer + ARP cache reader
+│   ├── anomaly_detector.py  # Detects HIGH_TRAFFIC, NEW_DEVICE, STEALTH_DEVICE, IP_REASSIGNED
+│   ├── nvd_lookup.py        # NVD API CVE lookup by service name
+│   ├── nvd_scanner.py       # Deep all-port scan + CVE lookup (runs every 30 min)
+│   ├── scan_state.py        # Shared in-memory scan state between monitor and Flask
+│   └── app.py               # Flask REST API + page routes
+├── templates/
+│   ├── base.html            # Shared layout: header, nav, stats bar, JS helpers
+│   ├── devices.html         # / — active devices + passive detections per interface
+│   ├── traffic.html         # /traffic — bandwidth per device
+│   ├── anomalies.html       # /anomalies — alerts
+│   ├── cves.html            # /cves — CVE findings per host
+│   └── timeline.html        # /timeline — charts (devices/day, CVE severity, traffic, anomalies)
+└── static/
+    └── style.css            # All CSS
 ```
 
 ---
 
 ## Dependencies
 
-### System packages (install once with apt)
+### System packages
 
 ```bash
-sudo apt install nmap samba-common-bin avahi-utils avahi-daemon python3-dev
+sudo apt install nmap python3-netifaces python3-scapy samba-common-bin avahi-utils avahi-daemon
 ```
 
-| Package | What it's used for |
+| Package | Used for |
 |---|---|
 | `nmap` | Network scanning — finds all live hosts |
-| `samba-common-bin` | Provides `nmblookup` — resolves NetBIOS names (Windows PCs, printers, NAS) |
-| `avahi-utils` | Provides `avahi-resolve` — resolves mDNS names (Apple devices, Linux, some IoT) |
-| `avahi-daemon` | Background service required for mDNS resolution to work |
-| `python3-dev` | Required to compile some Python packages (like netifaces) |
+| `python3-netifaces` | Reads interface info (IP, gateway, subnet) |
+| `python3-scapy` | Packet sniffer for traffic monitoring and passive ARP detection |
+| `samba-common-bin` | `nmblookup` — NetBIOS name resolution |
+| `avahi-utils` + `avahi-daemon` | mDNS name resolution |
 
-> **Note:** `nmap` also provides the MAC vendor database used to identify device manufacturers (e.g. "Apple, Inc.", "Samsung Electronics") when no hostname can be found.
-
-### Python packages (install once with pip)
+### Python packages
 
 ```bash
-cd /home/eneus/Desktop/SteelHazeV2
-python3 -m venv venv
-venv/bin/pip install -r requirements.txt
+pip install flask python-nmap requests
 ```
-
-| Package | What it's used for |
-|---|---|
-| `flask` | Web server for the dashboard |
-| `python-nmap` | Python wrapper around the nmap binary |
-| `netifaces` | Reads network interface info (IP, gateway, subnet) |
-| `requests` | HTTP calls to the NVD API for CVE lookups |
-| `scapy` | Packet sniffer for traffic monitoring |
 
 ---
 
 ## How to Run
 
-### Normal mode (recommended — needs root for packet sniffing)
-
 ```bash
-sudo venv/bin/python main.py
+sudo python main.py
 ```
 
-Then open **http://localhost:5000** in your browser.
-
-### Without root (no traffic stats, everything else works)
-
-```bash
-venv/bin/python main.py --no-traffic
-```
-
-### Deep CVE scan (run separately — slow, queries NVD API)
-
-```bash
-sudo venv/bin/python main.py --deep-scan
-```
-
-Results appear in the **CVE Findings** tab of the dashboard.
-
-### One-shot scan (prints devices to terminal, no web UI)
-
-```bash
-venv/bin/python main.py --scan-only
-```
+Needs root for packet sniffing (Scapy). Dashboard at **http://localhost:5000**.
 
 ---
 
 ## What It Does
 
-- **Scans the network** every 30 seconds using nmap ping scan (`-sn`) — finds all live hosts, not just those with open ports
-- **Detects the network automatically** from the active interface (no hardcoded IP range)
-- **Persists everything** to a SQLite database so history is kept across restarts
-- **Monitors traffic** with Scapy — tracks bytes sent/received and packet counts per device
-- **Detects anomalies**: high traffic (>100 MB/min), odd-hours activity (02:00–06:00), new unknown devices
-- **CVE deep scan**: scans open ports with service version detection and queries the NVD API for known vulnerabilities, saved to the database
-- **Web dashboard** at `http://localhost:5000` with five tabs:
-  - **Devices** — all devices seen in the last 24h, mark as known
-  - **Traffic** — bandwidth usage per device
-  - **Anomalies** — alerts from the last 24h
-  - **CVE Findings** — results from the deep scanner with links to NVD
-  - **Timeline** — bar chart of unique devices per day over 7 days
+- **Scans every 30s** using nmap `-sn` via the default route interface — finds all live hosts
+- **Passive detection** runs continuously alongside the scan: ARP sniffer + kernel ARP cache reader catch devices that don't respond to nmap (IoT, AP-isolated, stealthy hosts)
+- **Traffic monitoring** with Scapy — tracks bytes sent/received per device in real time
+- **Deep CVE scan** every 30 min: scans all ports (`-p-`), detects service versions, queries NVD API for CVEs
+- **Anomaly detection**: high traffic, new unknown devices, stealth devices (passive-only), IP reassignment
+- **Persists everything** to SQLite — history survives restarts
+
+### Dashboard pages
+
+| Page | URL | Shows |
+|---|---|---|
+| Devices | `/` | Active devices from scan + passive-only section per interface card |
+| Traffic | `/traffic` | Bandwidth per device (last 24h) |
+| Anomalies | `/anomalies` | All alerts (last 24h) |
+| CVE Findings | `/cves` | Open ports + CVEs grouped per host |
+| Charts | `/timeline` | Devices/day, CVE severity, top traffic, anomalies/day |
 
 ---
 
 ## Database Structure
 
-The database has 7 tables. Each is explained below.
+8 tables. All timestamps are UTC.
 
 ---
 
 ### `networks`
-Every unique network SteelHaze has ever seen. A network is identified by its gateway IP + subnet combination.
+One row per unique network ever seen. Identified by `(gateway_ip, subnet)`.
 
-| Column | Description |
-|---|---|
-| `id` | Unique ID |
-| `ssid` | Wi-Fi network name (if available) |
-| `gateway_ip` | Router IP address |
-| `subnet` | Network range (e.g. 192.168.1.0/24) |
-| `interface` | Network interface used (e.g. eth0, wlan0) |
-| `first_seen` | When this network was first detected |
-| `last_seen` | When it was last detected |
+| Column | Type | Description |
+|---|---|---|
+| `id` | INTEGER PK | — |
+| `ssid` | TEXT | Wi-Fi name, null if wired |
+| `gateway_ip` | TEXT | Router IP |
+| `subnet` | TEXT | e.g. 192.168.1.0/24 |
+| `interface` | TEXT | eth0 / wlan0 |
+| `first_seen` | TIMESTAMP | — |
+| `last_seen` | TIMESTAMP | — |
+
+Constraint: `UNIQUE(gateway_ip, subnet)`
 
 ---
 
 ### `devices`
-The hardware identity of each device. A device is identified by its MAC address. **The IP address is not stored here** because it can change — see `device_network` below.
+One row per unique physical device. Identity = MAC address. IP is not stored here — it lives in `device_network` because the same device can have different IPs on different networks.
 
-| Column | Description |
-|---|---|
-| `id` | Unique ID |
-| `mac` | MAC address (hardware identifier) |
-| `hostname` | Device hostname (if available) |
-| `first_seen` | When this device was first detected |
-| `last_seen` | When it was last detected |
+| Column | Type | Description |
+|---|---|---|
+| `id` | INTEGER PK | — |
+| `mac` | TEXT | MAC address, null if nmap couldn't read it |
+| `label` | TEXT | User-given nickname |
+| `first_seen` | TIMESTAMP | — |
+| `last_seen` | TIMESTAMP | — |
 
 ---
 
 ### `device_network`
-Links a device to a network, storing the IP it had on that network. Also tracks whether the device has been marked as known.
+Junction table linking a device to a network. Holds the IP (network-specific) and how the device was discovered.
 
-| Column | Description |
-|---|---|
-| `id` | Unique ID |
-| `device_id` | Reference to `devices` |
-| `network_id` | Reference to `networks` |
-| `ip` | IP address of the device on this network |
-| `is_known` | Whether the device has been marked as known |
-| `first_seen` | First time this device appeared on this network |
-| `last_seen` | Last time this device appeared on this network |
+| Column | Type | Description |
+|---|---|---|
+| `id` | INTEGER PK | — |
+| `device_id` | INTEGER FK → devices.id | — |
+| `network_id` | INTEGER FK → networks.id | — |
+| `ip` | TEXT | Current IP on this network |
+| `first_seen` | TIMESTAMP | — |
+| `last_seen` | TIMESTAMP | — |
+| `is_known` | BOOLEAN | 0 = unknown, 1 = user-approved |
+| `source` | TEXT | `nmap` = found by scan, `passive` = found by ARP only |
 
-> A device can be known on one network and unknown on another — that's why `is_known` lives here and not in `devices`.
+Constraint: `UNIQUE(device_id, network_id)`
+
+> `source` upgrades from `passive` → `nmap` automatically when nmap finds the device. It never downgrades.
 
 ---
 
 ### `connection_logs`
-A timestamped log of every scan event — each time a device was seen on a network.
+One row every scan cycle a device is seen — raw event log.
 
-| Column | Description |
-|---|---|
-| `id` | Unique ID |
-| `device_id` | Reference to `devices` |
-| `network_id` | Reference to `networks` |
-| `ip` | IP address at the time of the scan |
-| `status` | Scan result status |
-| `timestamp` | When the event occurred |
+| Column | Type | Description |
+|---|---|---|
+| `id` | INTEGER PK | — |
+| `device_id` | INTEGER FK → devices.id | — |
+| `network_id` | INTEGER FK → networks.id | — |
+| `ip` | TEXT | IP at time of log |
+| `status` | TEXT | `up` |
+| `timestamp` | TIMESTAMP | — |
 
 ---
 
 ### `traffic_stats`
-Bandwidth snapshots captured by the packet sniffer. One row per device per scan interval.
+Bandwidth snapshot every 30s per device, written by the Scapy sniffer.
 
-| Column | Description |
-|---|---|
-| `id` | Unique ID |
-| `device_id` | Reference to `devices` |
-| `network_id` | Reference to `networks` |
-| `ip` | IP address at the time of capture |
-| `bytes_sent` | Bytes sent by the device in this interval |
-| `bytes_received` | Bytes received by the device in this interval |
-| `packets` | Total packet count in this interval |
-| `timestamp` | When the snapshot was taken |
+| Column | Type | Description |
+|---|---|---|
+| `id` | INTEGER PK | — |
+| `device_id` | INTEGER FK → devices.id | — |
+| `network_id` | INTEGER FK → networks.id | — |
+| `ip` | TEXT | — |
+| `bytes_sent` | INTEGER | — |
+| `bytes_received` | INTEGER | — |
+| `packets` | INTEGER | — |
+| `timestamp` | TIMESTAMP | — |
 
 ---
 
 ### `anomalies`
-Alerts generated by the anomaly detector. Types: `HIGH_TRAFFIC`, `ODD_HOURS`, `NEW_DEVICE`.
+All alerts from the anomaly detector and CVE scanner.
 
-| Column | Description |
-|---|---|
-| `id` | Unique ID |
-| `type` | Anomaly type (HIGH_TRAFFIC, ODD_HOURS, NEW_DEVICE) |
-| `ip` | IP address involved |
-| `mac` | MAC address involved |
-| `hostname` | Hostname involved |
-| `details` | Human-readable description of the anomaly |
-| `network_id` | Reference to `networks` |
-| `timestamp` | When the anomaly was detected |
-| `acknowledged` | Whether the alert has been dismissed |
+| Column | Type | Description |
+|---|---|---|
+| `id` | INTEGER PK | — |
+| `type` | TEXT | See types below |
+| `ip` | TEXT | — |
+| `mac` | TEXT | Plain string — not a FK, survives device deletion |
+| `details` | TEXT | Human-readable message |
+| `network_id` | INTEGER FK → networks.id | — |
+| `timestamp` | TIMESTAMP | — |
+| `acknowledged` | BOOLEAN | 0 = unread, 1 = dismissed |
+
+**Anomaly types:**
+
+| Type | Trigger | Dedup |
+|---|---|---|
+| `NEW_DEVICE` | Unknown device first seen (within 10 min) | Once per MAC per 24h |
+| `HIGH_TRAFFIC` | >500 MB in 5 minutes | Once per IP per 1h |
+| `STEALTH_DEVICE` | Passive-only device, >5 min old, never seen by nmap | Once per MAC per 24h |
+| `IP_REASSIGNED` | IP now seen with a different MAC than before | Once per IP per 24h |
+| `CVE_FOUND` | CVE found on a device port | Once per CVE+IP per 24h |
+
+---
+
+### `open_ports`
+All open ports found by the deep CVE scan. Cleared and rewritten on each scan (zero-downtime swap).
+
+| Column | Type | Description |
+|---|---|---|
+| `id` | INTEGER PK | — |
+| `device_id` | INTEGER FK → devices.id | — |
+| `ip` | TEXT | — |
+| `port` | INTEGER | — |
+| `service` | TEXT | Service name from nmap |
+| `scan_time` | TIMESTAMP | — |
 
 ---
 
 ### `cve_findings`
-Vulnerabilities found by the deep CVE scanner. Each row is a unique combination of device, port, and CVE ID — so repeated scans never create duplicates.
+CVE hits per port per device. Cleared and rewritten on each scan (zero-downtime swap).
 
-| Column | Description |
-|---|---|
-| `id` | Unique ID |
-| `device_id` | Reference to `devices` |
-| `ip` | IP address at time of scan |
-| `port` | Port the vulnerability was found on |
-| `service` | Service name running on that port |
-| `cve_id` | CVE identifier (e.g. CVE-2021-44228) |
-| `severity` | Severity level (e.g. HIGH, CRITICAL) |
-| `description` | Summary of the vulnerability |
-| `timestamp` | When the finding was recorded |
+| Column | Type | Description |
+|---|---|---|
+| `id` | INTEGER PK | — |
+| `device_id` | INTEGER FK → devices.id | — |
+| `ip` | TEXT | — |
+| `port` | INTEGER | — |
+| `service` | TEXT | — |
+| `cve_id` | TEXT | e.g. CVE-2023-1234 |
+| `severity` | TEXT | CRITICAL / HIGH / MEDIUM / LOW |
+| `description` | TEXT | — |
+| `timestamp` | TIMESTAMP | — |
+
+---
+
+## Table Relationships
+
+```
+networks ──< device_network >── devices
+                │
+                ├──< connection_logs
+                ├──< traffic_stats
+                └── anomalies (network_id)
+
+devices ──< open_ports
+devices ──< cve_findings
+devices ──< connection_logs
+devices ──< traffic_stats
+```
+
+**Key rules:**
+- IP is stored in `device_network`, not `devices` — same device, different IPs per network
+- `anomalies.mac` is a plain string, not a FK — alerts survive device cleanup
+- `source = 'passive'` means the device was never seen by nmap, only by ARP traffic
+- `open_ports` and `cve_findings` use a zero-downtime swap: new rows inserted first, old rows deleted at the end by timestamp
