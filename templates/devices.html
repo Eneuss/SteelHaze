@@ -12,7 +12,7 @@
 <script>
 function timeAgo(dateStr) {
   if (!dateStr) return '—';
-  const diff = Date.now() - new Date(dateStr).getTime();
+  const diff = Date.now() - parseUTC(dateStr).getTime();
   const mins = Math.floor(diff / 60000);
   if (mins < 1)  return 'just now';
   if (mins < 60) return mins + 'm ago';
@@ -22,7 +22,7 @@ function timeAgo(dateStr) {
 }
 
 function lastSeenClass(dateStr) {
-  const mins = Math.floor((Date.now() - new Date(dateStr).getTime()) / 60000);
+  const mins = Math.floor((Date.now() - parseUTC(dateStr).getTime()) / 60000);
   if (mins < 5)  return 'time-active';
   if (mins < 60) return 'time-recent';
   return 'time-stale';
@@ -79,7 +79,7 @@ async function saveLabel(mac) {
 
 function deviceRow(d) {
   const now = Date.now();
-  const active = (now - new Date(d.last_seen).getTime()) < 300000;
+  const active = (now - parseUTC(d.last_seen).getTime()) < 300000;
   const dot = `<span class="status-dot ${active ? 'dot-active' : 'dot-offline'}"></span>`;
   const knownBadge = d.is_known
     ? '<span class="badge badge-green">Known</span>'
@@ -139,8 +139,8 @@ async function loadPage() {
 
     const now = Date.now();
     const devices = (info.devices || []).sort((a, b) => {
-      const aA = (now - new Date(a.last_seen).getTime()) < 300000;
-      const bA = (now - new Date(b.last_seen).getTime()) < 300000;
+      const aA = (now - parseUTC(a.last_seen).getTime()) < 300000;
+      const bA = (now - parseUTC(b.last_seen).getTime()) < 300000;
       if (aA !== bA) return aA ? -1 : 1;
       return new Date(b.last_seen) - new Date(a.last_seen);
     });

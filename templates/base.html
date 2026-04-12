@@ -48,8 +48,9 @@ function fmtBytes(b) {
   if (b < 1073741824) return (b / 1048576).toFixed(1) + ' MB';
   return (b / 1073741824).toFixed(2) + ' GB';
 }
-function fmtTime(s)  { return s ? new Date(s).toLocaleString()     : '—'; }
-function fmtShort(s) { return s ? new Date(s).toLocaleTimeString() : '—'; }
+function parseUTC(s) { return s ? new Date(s.trim().replace(' ', 'T') + 'Z') : null; }
+function fmtTime(s)  { const d = parseUTC(s); return d ? d.toLocaleString()     : '—'; }
+function fmtShort(s) { const d = parseUTC(s); return d ? d.toLocaleTimeString() : '—'; }
 
 async function loadStats() {
   const d = await fetch('/api/stats').then(r => r.json());
