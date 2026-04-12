@@ -39,7 +39,7 @@ SteelHazeV2/
 ### System packages
 
 ```bash
-sudo apt install nmap python3-netifaces python3-scapy samba-common-bin avahi-utils avahi-daemon
+sudo apt install nmap python3-netifaces python3-scapy
 ```
 
 | Package | Used for |
@@ -47,8 +47,6 @@ sudo apt install nmap python3-netifaces python3-scapy samba-common-bin avahi-uti
 | `nmap` | Network scanning — finds all live hosts |
 | `python3-netifaces` | Reads interface info (IP, gateway, subnet) |
 | `python3-scapy` | Packet sniffer for traffic monitoring and passive ARP detection |
-| `samba-common-bin` | `nmblookup` — NetBIOS name resolution |
-| `avahi-utils` + `avahi-daemon` | mDNS name resolution |
 
 ### Python packages
 
