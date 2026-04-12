@@ -47,11 +47,17 @@ def init_database():
             first_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             is_known BOOLEAN DEFAULT 0,
+            source TEXT DEFAULT 'nmap',
             FOREIGN KEY (device_id) REFERENCES devices(id),
             FOREIGN KEY (network_id) REFERENCES networks(id),
             UNIQUE(device_id, network_id)
         )
     ''')
+
+    # Migration: add source column to existing databases
+    cursor.execute("PRAGMA table_info(device_network)")
+    if 'source' not in [row[1] for row in cursor.fetchall()]:
+        cursor.execute("ALTER TABLE device_network ADD COLUMN source TEXT DEFAULT 'nmap'")
 
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS connection_logs (

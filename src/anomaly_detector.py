@@ -46,6 +46,29 @@ def detect_anomalies():
             "timestamp": row[2],
         })
 
+    # 3. Stealth devices: passive-only, >5 min old, not already alerted in 24h
+    cursor.execute('''
+        SELECT dn.ip, d.mac, dn.first_seen
+        FROM devices d
+        JOIN device_network dn ON d.id = dn.device_id
+        WHERE dn.source = 'passive'
+        AND dn.first_seen < datetime('now', '-5 minutes')
+    ''')
+    for row in cursor.fetchall():
+        cursor.execute('''
+            SELECT COUNT(*) FROM anomalies
+            WHERE type = 'STEALTH_DEVICE' AND mac = ?
+            AND timestamp > datetime('now', '-24 hours')
+        ''', (row[1],))
+        if cursor.fetchone()[0] == 0:
+            anomalies.append({
+                "type": "STEALTH_DEVICE",
+                "ip": row[0],
+                "mac": row[1],
+                "details": "Device detected passively — does not respond to network scan",
+                "timestamp": row[2],
+            })
+
     conn.close()
     return anomalies
 

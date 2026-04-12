@@ -98,7 +98,7 @@ def get_interfaces():
     # Pull all devices seen in the last 24h with their most recent interface
     rows = conn.execute('''
         SELECT d.mac, d.label, d.first_seen,
-               dn.ip, dn.last_seen, dn.is_known, n.interface
+               dn.ip, dn.last_seen, dn.is_known, n.interface, dn.source
         FROM devices d
         JOIN device_network dn ON d.id = dn.device_id
         JOIN networks n ON dn.network_id = n.id
@@ -112,17 +112,21 @@ def get_interfaces():
     ''').fetchall()
     conn.close()
 
-    # Index for enriching active scan_state devices
+    # Index for enriching active scan_state devices (nmap only)
     db_by_mac  = {}
     db_by_ip   = {}
-    # Group by interface for offline device detection
-    db_by_iface = {}
+    db_nmap_by_iface    = {}
+    db_passive_by_iface = {}
     for r in rows:
         row = dict(r)
-        if r['mac']:
-            db_by_mac[r['mac']] = row
-        db_by_ip[r['ip']] = row
-        db_by_iface.setdefault(r['interface'], []).append(row)
+        src = row.get('source') or 'nmap'
+        if src == 'passive':
+            db_passive_by_iface.setdefault(r['interface'], []).append(row)
+        else:
+            if r['mac']:
+                db_by_mac[r['mac']] = row
+            db_by_ip[r['ip']] = row
+            db_nmap_by_iface.setdefault(r['interface'], []).append(row)
 
     if not state:
         return jsonify({})
@@ -147,7 +151,7 @@ def get_interfaces():
 
         active = [enrich(d) for d in raw_devices]
 
-        # Offline: seen in last 24h on this interface, not in the current scan
+        # Offline: nmap-source devices seen in last 24h, not in current scan
         offline = [
             {
                 'ip':         r['ip'],
@@ -157,7 +161,22 @@ def get_interfaces():
                 'first_seen': r['first_seen'],
                 'last_seen':  r['last_seen'],
             }
-            for r in db_by_iface.get(iface, [])
+            for r in db_nmap_by_iface.get(iface, [])
+            if r['ip'] not in active_ips
+            and (not r['mac'] or r['mac'] not in active_macs)
+        ]
+
+        # Passive: passively-seen devices not found by nmap
+        passive = [
+            {
+                'ip':         r['ip'],
+                'mac':        r['mac'] or '—',
+                'label':      r['label'],
+                'is_known':   r['is_known'],
+                'first_seen': r['first_seen'],
+                'last_seen':  r['last_seen'],
+            }
+            for r in db_passive_by_iface.get(iface, [])
             if r['ip'] not in active_ips
             and (not r['mac'] or r['mac'] not in active_macs)
         ]
@@ -167,6 +186,7 @@ def get_interfaces():
             'status':  s.get('status', 'idle'),
             'error':   s.get('error'),
             'devices': active + offline,
+            'passive': passive,
         }
     return jsonify(result)
 

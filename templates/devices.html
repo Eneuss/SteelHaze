@@ -150,15 +150,31 @@ async function loadPage() {
          </table>`
       : `<div class="empty" style="padding:16px">${info.status === 'error' ? 'Scan failed.' : 'No devices found yet.'}</div>`;
 
+    const passive = info.passive || [];
+    const passiveHtml = passive.length
+      ? `<div class="passive-section">
+           <div class="passive-label">Passive detection — not responding to scan</div>
+           <table>
+             <thead><tr>
+               <th>IP</th><th>MAC</th><th>Label</th>
+               <th>First Seen</th><th>Last Seen</th><th>Status</th><th>Action</th>
+             </tr></thead>
+             <tbody>${passive.map(deviceRow).join('')}</tbody>
+           </table>
+         </div>`
+      : '';
+
+    const total = devices.length + passive.length;
     return `<div class="card" style="margin-bottom:20px">
       <div class="card-header iface-header">
         <span class="iface-name">${iface}</span>
         <span class="iface-subnet">${info.subnet || ''}</span>
         ${badge}
-        <span class="iface-count">${devices.length} device${devices.length !== 1 ? 's' : ''}</span>
+        <span class="iface-count">${total} device${total !== 1 ? 's' : ''}</span>
       </div>
       ${errorNote}
       ${tableHtml}
+      ${passiveHtml}
     </div>`;
   }).join('');
 }

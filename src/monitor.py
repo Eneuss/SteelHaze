@@ -12,6 +12,7 @@ from database import DB_PATH
 from traffic_monitor import traffic_monitor
 from anomaly_detector import detect_anomalies, save_anomaly
 from nvd_scanner import run_nvd_scan
+from passive_scanner import passive_scanner
 import scan_state
 
 
@@ -83,12 +84,12 @@ def save_devices(devices, network_info):
         dn_row = cursor.fetchone()
         if dn_row:
             cursor.execute(
-                "UPDATE device_network SET last_seen = ?, ip = ? WHERE id = ?",
+                "UPDATE device_network SET last_seen = ?, ip = ?, source = 'nmap' WHERE id = ?",
                 (datetime.now(), ip, dn_row[0])
             )
         else:
             cursor.execute(
-                "INSERT INTO device_network (device_id, network_id, ip, is_known) VALUES (?, ?, ?, 0)",
+                "INSERT INTO device_network (device_id, network_id, ip, is_known, source) VALUES (?, ?, ?, 0, 'nmap')",
                 (device_id, network_id, ip)
             )
             new_ips.append(ip)
@@ -148,6 +149,7 @@ def monitor_loop(interval=30):
     print("Press Ctrl+C to stop\n")
 
     traffic_monitor.start_monitoring()
+    passive_scanner.start()
     threading.Thread(target=deep_scan_loop, daemon=True).start()
 
     try:
@@ -155,11 +157,17 @@ def monitor_loop(interval=30):
             results = scan_all_parallel(on_status=scan_state.update)
 
             all_new_ips = []
+            last_network_info = None
             for iface, result in results.items():
                 if result["error"] or not result["devices"]:
                     continue
                 new_ips, _ = save_devices(result["devices"], result["network_info"])
                 all_new_ips.extend(new_ips)
+                last_network_info = result["network_info"]
+
+            if last_network_info:
+                passive_new = passive_scanner.save_new_to_db(last_network_info)
+                all_new_ips.extend(passive_new)
 
             save_traffic_stats()
 
