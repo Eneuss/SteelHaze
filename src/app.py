@@ -220,7 +220,9 @@ def set_label(mac):
 def get_traffic():
     conn = db()
     rows = conn.execute('''
-        SELECT dn.ip, d.mac, d.label,
+        SELECT dn.ip,
+               MAX(d.mac)   AS mac,
+               MAX(d.label) AS label,
                SUM(t.bytes_sent)     AS total_sent,
                SUM(t.bytes_received) AS total_received,
                SUM(t.packets)        AS total_packets,
@@ -229,7 +231,7 @@ def get_traffic():
         JOIN traffic_stats t ON d.id = t.device_id
         JOIN device_network dn ON d.id = dn.device_id AND t.network_id = dn.network_id
         WHERE t.timestamp > datetime('now', '-24 hours')
-        GROUP BY d.id
+        GROUP BY dn.ip
         ORDER BY (total_sent + total_received) DESC
     ''').fetchall()
     conn.close()

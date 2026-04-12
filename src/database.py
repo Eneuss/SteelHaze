@@ -128,5 +128,34 @@ def init_database():
         )
     ''')
 
+    # Migration: merge duplicate MAC entries in devices table
+    # (can occur if passive scanner and nmap both inserted the same MAC before one committed)
+    cursor.execute('''
+        SELECT mac FROM devices
+        WHERE mac IS NOT NULL GROUP BY mac HAVING COUNT(*) > 1
+    ''')
+    for (mac,) in cursor.fetchall():
+        cursor.execute('SELECT id, label FROM devices WHERE mac = ? ORDER BY first_seen ASC', (mac,))
+        rows = cursor.fetchall()
+        keep_id = rows[0][0]
+        # Prefer the entry that has a label
+        for rid, label in rows:
+            if label:
+                keep_id = rid
+                break
+        dup_ids = [r[0] for r in rows if r[0] != keep_id]
+        for dup_id in dup_ids:
+            # device_network has UNIQUE(device_id, network_id) — delete conflicting rows first
+            cursor.execute('''
+                DELETE FROM device_network WHERE device_id = ?
+                AND network_id IN (SELECT network_id FROM device_network WHERE device_id = ?)
+            ''', (dup_id, keep_id))
+            cursor.execute('UPDATE device_network  SET device_id = ? WHERE device_id = ?', (keep_id, dup_id))
+            cursor.execute('UPDATE traffic_stats   SET device_id = ? WHERE device_id = ?', (keep_id, dup_id))
+            cursor.execute('UPDATE connection_logs SET device_id = ? WHERE device_id = ?', (keep_id, dup_id))
+            cursor.execute('UPDATE open_ports      SET device_id = ? WHERE device_id = ?', (keep_id, dup_id))
+            cursor.execute('UPDATE cve_findings    SET device_id = ? WHERE device_id = ?', (keep_id, dup_id))
+            cursor.execute('DELETE FROM devices WHERE id = ?', (dup_id,))
+
     conn.commit()
     conn.close()
