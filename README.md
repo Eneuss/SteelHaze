@@ -64,6 +64,12 @@ sudo python main.py
 
 Needs root for packet sniffing (Scapy). Dashboard at **http://localhost:5000**.
 
+```bash
+python main.py --scan-only
+```
+
+One-shot scan — prints all discovered devices to the terminal, no web UI, no root needed.
+
 ---
 
 ## What It Does
