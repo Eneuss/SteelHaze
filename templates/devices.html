@@ -87,10 +87,15 @@ function deviceRow(d) {
   const lsCls = lastSeenClass(d.last_seen);
   const s = sid(d.mac || '');
 
-  const labelCell = d.is_known
+  const labelCell = d.label
     ? `<td id="lc-${s}">
-         <span class="device-label">${d.label || '<span class="no-label">—</span>'}</span>
-         <span class="edit-icon" onclick="showEditLabel('${d.mac}', '${(d.label || '').replace(/'/g, "\\'")}')">✎</span>
+         <span class="device-label">${d.label}</span>
+         ${d.is_known ? `<span class="edit-icon" onclick="showEditLabel('${d.mac}', '${d.label.replace(/'/g, "\\'")}')">✎</span>` : ''}
+       </td>`
+    : d.is_known
+    ? `<td id="lc-${s}">
+         <span class="no-label">—</span>
+         <span class="edit-icon" onclick="showEditLabel('${d.mac}', '')">✎</span>
        </td>`
     : `<td id="lc-${s}"></td>`;
 

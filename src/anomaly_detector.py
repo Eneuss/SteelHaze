@@ -22,13 +22,19 @@ def detect_anomalies():
         HAVING total_bytes > 524288000
     ''')
     for row in cursor.fetchall():
-        anomalies.append({
-            "type": "HIGH_TRAFFIC",
-            "ip": row[0],
-            "mac": row[1],
-            "details": f"High traffic: {row[2] / 1024 / 1024:.2f} MB in 5 minutes",
-            "timestamp": row[3],
-        })
+        cursor.execute('''
+            SELECT COUNT(*) FROM anomalies
+            WHERE type = 'HIGH_TRAFFIC' AND ip = ?
+            AND timestamp > datetime('now', '-1 hours')
+        ''', (row[0],))
+        if cursor.fetchone()[0] == 0:
+            anomalies.append({
+                "type": "HIGH_TRAFFIC",
+                "ip": row[0],
+                "mac": row[1],
+                "details": f"High traffic: {row[2] / 1024 / 1024:.2f} MB in 5 minutes",
+                "timestamp": row[3],
+            })
 
     # 2. New unknown devices (seen in the last 10 minutes, not yet marked known)
     cursor.execute('''
@@ -38,13 +44,19 @@ def detect_anomalies():
         WHERE dn.is_known = 0 AND dn.first_seen > datetime('now', '-10 minutes')
     ''')
     for row in cursor.fetchall():
-        anomalies.append({
-            "type": "NEW_DEVICE",
-            "ip": row[0],
-            "mac": row[1],
-            "details": "New unrecognised device detected",
-            "timestamp": row[2],
-        })
+        cursor.execute('''
+            SELECT COUNT(*) FROM anomalies
+            WHERE type = 'NEW_DEVICE' AND mac = ?
+            AND timestamp > datetime('now', '-24 hours')
+        ''', (row[1],))
+        if cursor.fetchone()[0] == 0:
+            anomalies.append({
+                "type": "NEW_DEVICE",
+                "ip": row[0],
+                "mac": row[1],
+                "details": "New unrecognised device detected",
+                "timestamp": row[2],
+            })
 
     # 3. Stealth devices: passive-only, >5 min old, not already alerted in 24h
     cursor.execute('''
