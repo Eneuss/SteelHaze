@@ -34,6 +34,9 @@ def main():
     web_thread = threading.Thread(target=run_web, daemon=True)
     web_thread.start()
 
+    from epaper import start as epaper_start
+    epaper_start()
+
     run_monitor(interval=30)
 
 
