@@ -172,8 +172,8 @@ _SEV_COLORS = {
 
 
 def _draw_cve_table(pdf, rows):
-    headers = ['IP', 'Port', 'Service', 'CVE ID', 'Severity', 'Description']
-    widths  = [30,   12,     28,         40,        22,          48]
+    headers = ['IP', 'Port', 'Service', 'CVE ID', 'Severity']
+    widths  = [35,   15,     35,         55,        40]
 
     pdf.set_font('Helvetica', 'B', 8)
     pdf.set_fill_color(45, 89, 134)
@@ -189,18 +189,23 @@ def _draw_cve_table(pdf, rows):
         pdf.ln(1)
         return
 
-    pdf.set_font('Helvetica', '', 7)
     for i, (ip, port, service, cve_id, severity, desc) in enumerate(rows):
-        pdf.set_fill_color(240, 245, 255) if i % 2 == 0 else pdf.set_fill_color(255, 255, 255)
+        bg = (240, 245, 255) if i % 2 == 0 else (255, 255, 255)
+        pdf.set_fill_color(*bg)
+        pdf.set_font('Helvetica', '', 7)
         pdf.set_text_color(33, 33, 33)
-        for val, w in zip([ip, str(port), service[:18], cve_id], widths[:4]):
+        for val, w in zip([ip, str(port), service, cve_id], widths[:4]):
             pdf.cell(w, 5, _safe(val), fill=True)
         r, g, b = _SEV_COLORS.get(severity, (100, 100, 100))
         pdf.set_text_color(r, g, b)
         pdf.cell(widths[4], 5, _safe(severity), fill=True)
-        pdf.set_text_color(33, 33, 33)
-        pdf.cell(widths[5], 5, _safe(desc)[:55], fill=True)
         pdf.ln()
+        pdf.set_fill_color(*bg)
+        pdf.set_font('Helvetica', 'I', 6)
+        pdf.set_text_color(110, 110, 110)
+        pdf.cell(sum(widths), 4, '  ' + _safe(desc)[:120], fill=True)
+        pdf.ln()
+
     pdf.ln(1)
 
 
