@@ -82,6 +82,31 @@ def detect_anomalies():
                 "timestamp": row[2],
             })
 
+    # 4. IP conflict: two different MACs simultaneously seen at the same IP
+    cursor.execute('''
+        SELECT dn.ip, GROUP_CONCAT(DISTINCT d.mac) AS macs
+        FROM device_network dn
+        JOIN devices d ON dn.device_id = d.id
+        WHERE dn.last_seen > datetime('now', '-5 minutes')
+        AND d.mac IS NOT NULL AND d.mac != ''
+        GROUP BY dn.ip, dn.network_id
+        HAVING COUNT(DISTINCT d.mac) > 1
+    ''')
+    for row in cursor.fetchall():
+        cursor.execute('''
+            SELECT COUNT(*) FROM anomalies
+            WHERE type = 'IP_CONFLICT' AND ip = ?
+            AND timestamp > datetime('now', '-1 hours')
+        ''', (row[0],))
+        if cursor.fetchone()[0] == 0:
+            anomalies.append({
+                'type':      'IP_CONFLICT',
+                'ip':        row[0],
+                'mac':       row[1],
+                'details':   f'IP {row[0]} claimed by multiple MACs simultaneously: {row[1]}',
+                'timestamp': datetime.now().isoformat(),
+            })
+
     conn.close()
     return anomalies
 
@@ -101,7 +126,7 @@ def save_anomaly(anomaly):
     ))
     conn.commit()
     conn.close()
-    if anomaly["type"] in ('NEW_DEVICE', 'STEALTH_DEVICE'):
+    if anomaly["type"] in ('NEW_DEVICE', 'STEALTH_DEVICE', 'IP_CONFLICT'):
         telegram_notify.notify(anomaly["type"], anomaly["ip"], anomaly.get("mac", ""), anomaly["details"])
 
 

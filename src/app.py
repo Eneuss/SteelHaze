@@ -94,39 +94,89 @@ def get_stats():
 def get_interfaces():
     state = scan_state.get_all()
     conn  = db()
+    now   = datetime.now()
 
-    # Pull all devices seen in the last 24h with their most recent interface
-    rows = conn.execute('''
+    # nmap devices: last 24h, strictly source='nmap'
+    nmap_rows = conn.execute('''
         SELECT d.mac, d.label, d.first_seen,
-               dn.ip, dn.last_seen, dn.is_known, n.interface, dn.source
+               dn.ip, dn.last_seen, dn.is_known, n.interface
         FROM devices d
         JOIN device_network dn ON d.id = dn.device_id
         JOIN networks n ON dn.network_id = n.id
-        WHERE dn.last_seen > datetime('now', '-24 hours')
+        WHERE dn.source = 'nmap'
+        AND dn.last_seen > datetime('now', '-24 hours')
         AND dn.id = (
-            SELECT id FROM device_network
-            WHERE device_id = d.id
-            ORDER BY last_seen DESC LIMIT 1
+            SELECT id FROM device_network WHERE device_id = d.id ORDER BY last_seen DESC LIMIT 1
         )
         ORDER BY dn.last_seen DESC
     ''').fetchall()
+
+    # passive devices: ALL, no time cutoff
+    passive_rows = conn.execute('''
+        SELECT d.mac, d.label, d.first_seen,
+               dn.ip, dn.last_seen, dn.is_known, n.interface
+        FROM devices d
+        JOIN device_network dn ON d.id = dn.device_id
+        JOIN networks n ON dn.network_id = n.id
+        WHERE dn.source = 'passive'
+        AND dn.id = (
+            SELECT id FROM device_network WHERE device_id = d.id ORDER BY last_seen DESC LIMIT 1
+        )
+        ORDER BY dn.last_seen DESC
+    ''').fetchall()
+
+    reassigned_ips = set(r[0] for r in conn.execute('''
+        SELECT DISTINCT ip FROM anomalies
+        WHERE type = 'IP_REASSIGNED' AND timestamp > datetime('now', '-24 hours')
+    ''').fetchall())
+
+    conflict_ips = set(r[0] for r in conn.execute('''
+        SELECT DISTINCT ip FROM anomalies
+        WHERE type = 'IP_CONFLICT' AND timestamp > datetime('now', '-1 hours')
+    ''').fetchall())
+
     conn.close()
 
-    # Index for enriching active scan_state devices (nmap only)
-    db_by_mac  = {}
-    db_by_ip   = {}
-    db_nmap_by_iface    = {}
-    db_passive_by_iface = {}
-    for r in rows:
-        row = dict(r)
-        src = row.get('source') or 'nmap'
-        if src == 'passive':
-            db_passive_by_iface.setdefault(r['interface'], []).append(row)
-        else:
-            if r['mac']:
-                db_by_mac[r['mac']] = row
-            db_by_ip[r['ip']] = row
-            db_nmap_by_iface.setdefault(r['interface'], []).append(row)
+    def offline_state(last_seen_str):
+        if not last_seen_str:
+            return 'gone'
+        try:
+            ls   = datetime.strptime(str(last_seen_str)[:19], '%Y-%m-%d %H:%M:%S')
+            secs = (now - ls).total_seconds()
+            if secs < 35:    return 'active'
+            if secs < 3600:  return 'recent'
+            return 'gone'
+        except Exception:
+            return 'gone'
+
+    def make_device(r, state_override=None):
+        ip = r['ip'] or ''
+        return {
+            'ip':            ip,
+            'mac':           r['mac'] or '-',
+            'label':         r['label'],
+            'is_known':      r['is_known'],
+            'first_seen':    r['first_seen'],
+            'last_seen':     r['last_seen'],
+            'offline_state': state_override or offline_state(r['last_seen']),
+            'ip_reassigned': ip in reassigned_ips,
+            'ip_conflict':   ip in conflict_ips,
+        }
+
+    nmap_by_iface    = {}
+    nmap_by_mac      = {}
+    nmap_by_ip       = {}
+    for r in nmap_rows:
+        d = dict(r)
+        nmap_by_iface.setdefault(d['interface'], []).append(d)
+        if d['mac']:
+            nmap_by_mac[d['mac']] = d
+        nmap_by_ip[d['ip']] = d
+
+    passive_by_iface = {}
+    for r in passive_rows:
+        d = dict(r)
+        passive_by_iface.setdefault(d['interface'], []).append(d)
 
     if not state:
         return jsonify({})
@@ -134,52 +184,33 @@ def get_interfaces():
     result = {}
     for iface, s in sorted(state.items()):
         raw_devices = s.get('devices', [])
-
-        active_ips  = {d.get('ip')  for d in raw_devices}
         active_macs = {d.get('mac') for d in raw_devices if d.get('mac')}
+        active_ips  = {d.get('ip')  for d in raw_devices}
 
-        def enrich(d):
-            meta = db_by_mac.get(d.get('mac')) or db_by_ip.get(d.get('ip')) or {}
-            return {
-                'ip':         d.get('ip'),
-                'mac':        d.get('mac') or meta.get('mac') or '-',
-                'label':      meta.get('label'),
-                'is_known':   meta.get('is_known', 0),
-                'first_seen': meta.get('first_seen'),
-                'last_seen':  meta.get('last_seen'),
-            }
+        active = []
+        for d in raw_devices:
+            meta = nmap_by_mac.get(d.get('mac')) or nmap_by_ip.get(d.get('ip')) or {}
+            ip   = d.get('ip') or ''
+            active.append({
+                'ip':            ip,
+                'mac':           d.get('mac') or meta.get('mac') or '-',
+                'label':         meta.get('label'),
+                'is_known':      meta.get('is_known', 0),
+                'first_seen':    meta.get('first_seen'),
+                'last_seen':     meta.get('last_seen'),
+                'offline_state': 'active',
+                'ip_reassigned': ip in reassigned_ips,
+                'ip_conflict':   ip in conflict_ips,
+            })
 
-        active = [enrich(d) for d in raw_devices]
-
-        # Offline: nmap-source devices seen in last 24h, not in current scan
         offline = [
-            {
-                'ip':         r['ip'],
-                'mac':        r['mac'] or '-',
-                'label':      r['label'],
-                'is_known':   r['is_known'],
-                'first_seen': r['first_seen'],
-                'last_seen':  r['last_seen'],
-            }
-            for r in db_nmap_by_iface.get(iface, [])
+            make_device(r)
+            for r in nmap_by_iface.get(iface, [])
             if r['ip'] not in active_ips
             and (not r['mac'] or r['mac'] not in active_macs)
         ]
 
-        # Passive: passively-seen devices not found by nmap
-        passive = [
-            {
-                'ip':         r['ip'],
-                'mac':        r['mac'] or '-',
-                'label':      r['label'],
-                'is_known':   r['is_known'],
-                'first_seen': r['first_seen'],
-                'last_seen':  r['last_seen'],
-            }
-            for r in db_passive_by_iface.get(iface, [])
-            if r['ip'] not in active_ips
-            and (not r['mac'] or r['mac'] not in active_macs)
-        ]
+        passive = [make_device(r) for r in passive_by_iface.get(iface, [])]
 
         result[iface] = {
             'subnet':  s.get('subnet', ''),
