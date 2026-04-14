@@ -2,6 +2,7 @@
 import sqlite3
 from datetime import datetime
 from database import DB_PATH
+import telegram_notify
 
 
 def detect_anomalies():
@@ -100,6 +101,8 @@ def save_anomaly(anomaly):
     ))
     conn.commit()
     conn.close()
+    if anomaly["type"] in ('NEW_DEVICE', 'STEALTH_DEVICE'):
+        telegram_notify.notify(anomaly["type"], anomaly["ip"], anomaly.get("mac", ""), anomaly["details"])
 
 
 def save_cve_anomaly(ip, mac, cve_id, severity, description):
@@ -119,4 +122,7 @@ def save_cve_anomaly(ip, mac, cve_id, severity, description):
             VALUES (?, ?, ?, ?, ?)
         ''', ('CVE_FOUND', ip, mac or '', details, datetime.now()))
         conn.commit()
-    conn.close()
+        conn.close()
+        telegram_notify.notify('CVE_FOUND', ip, mac or '', details)
+    else:
+        conn.close()

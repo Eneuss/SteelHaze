@@ -34,6 +34,9 @@ def main():
     web_thread = threading.Thread(target=run_web, daemon=True)
     web_thread.start()
 
+    from telegram_notify import start_summary_thread
+    start_summary_thread()
+
     run_monitor(interval=30)
 
 

@@ -11,6 +11,7 @@ from scanner import scan_all_parallel
 from database import DB_PATH
 from traffic_monitor import traffic_monitor
 from anomaly_detector import detect_anomalies, save_anomaly
+import telegram_notify
 from nvd_scanner import run_nvd_scan
 from passive_scanner import passive_scanner
 import scan_state
@@ -105,13 +106,13 @@ def save_devices(devices, network_info):
                         AND timestamp > datetime('now', '-24 hours')
                     ''', (ip,))
                     if cursor.fetchone()[0] == 0:
+                        details = f"IP was held by {prev[0]}, now seen with {mac}"
                         cursor.execute('''
                             INSERT INTO anomalies (type, ip, mac, details, timestamp)
                             VALUES ('IP_REASSIGNED', ?, ?, ?, ?)
-                        ''', (ip, mac,
-                              f"IP was held by {prev[0]}, now seen with {mac}",
-                              datetime.now()))
+                        ''', (ip, mac, details, datetime.now()))
                         print(f"[{datetime.now().strftime('%H:%M:%S')}] IP reassigned: {ip}  {prev[0]} -> {mac}")
+                        telegram_notify.notify('IP_REASSIGNED', ip, mac, details)
 
             cursor.execute(
                 "INSERT INTO device_network (device_id, network_id, ip, is_known, source) VALUES (?, ?, ?, 0, 'nmap')",
