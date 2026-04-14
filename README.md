@@ -20,6 +20,7 @@ SteelHazeV2/
 │   ├── nvd_lookup.py        # NVD API CVE lookup by service name
 │   ├── nvd_scanner.py       # Deep all-port scan + CVE lookup (runs every 30 min)
 │   ├── scan_state.py        # Shared in-memory scan state between monitor and Flask
+│   ├── telegram_notify.py   # Telegram bot notifications (optional)
 │   └── app.py               # Flask REST API + page routes
 ├── templates/
 │   ├── base.html            # Shared layout: header, nav, stats bar, JS helpers
@@ -28,6 +29,7 @@ SteelHazeV2/
 │   ├── anomalies.html       # /anomalies — alerts
 │   ├── cves.html            # /cves — CVE findings per host
 │   └── timeline.html        # /timeline — charts (devices/day, CVE severity, traffic, anomalies)
+├── telegram.cfg             # Telegram bot config (gitignored — create manually)
 └── static/
     └── style.css            # All CSS
 ```
@@ -74,6 +76,7 @@ Needs root for packet sniffing (Scapy). Dashboard at **http://localhost:5000**.
 - **Traffic monitoring** with Scapy — tracks bytes sent/received per device in real time
 - **Deep CVE scan** every 30 min: scans all ports (`-p-`), detects service versions, queries NVD API for CVEs
 - **Anomaly detection**: high traffic, new unknown devices, stealth devices (passive-only), IP reassignment
+- **Telegram notifications**: optional bot that sends real-time alerts and a daily summary
 - **Persists everything** to SQLite — history survives restarts
 
 ### Dashboard pages
@@ -85,6 +88,37 @@ Needs root for packet sniffing (Scapy). Dashboard at **http://localhost:5000**.
 | Anomalies | `/anomalies` | All alerts (last 24h) |
 | CVE Findings | `/cves` | Open ports + CVEs grouped per host |
 | Charts | `/timeline` | Devices/day, CVE severity, top traffic, anomalies/day |
+
+---
+
+## Telegram Notifications (optional)
+
+Telegram support is disabled by default. To enable it, create a `telegram.cfg` file in the project root:
+
+```ini
+[telegram]
+token = your_bot_token_here
+chat_id = your_chat_id_here
+```
+
+If the file is missing or the fields are empty, the project runs normally with no errors.
+
+### How to get a token and chat ID
+
+1. Open Telegram and message `@BotFather` — send `/newbot` and follow the steps to get a token
+2. Message your new bot once, then open `https://api.telegram.org/bot<TOKEN>/getUpdates` in a browser — your `chat_id` is under `message.chat.id`
+
+### What triggers a notification
+
+| Event | When |
+|---|---|
+| `NEW_DEVICE` | Unknown device joins the network |
+| `STEALTH_DEVICE` | Device visible only via ARP — never responds to scan |
+| `IP_REASSIGNED` | A known IP is now seen with a different MAC |
+| `CVE_FOUND` | A CRITICAL or HIGH severity CVE is found on a device |
+| Daily summary | Every day at 08:00 — total devices, unknown count, unacknowledged anomalies, CVE count |
+
+Notifications inherit the existing dedup rules — no extra cooldown needed.
 
 ---
 
