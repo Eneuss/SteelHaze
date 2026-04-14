@@ -131,6 +131,31 @@ def save_devices(devices, network_info):
     return new_ips, network_id
 
 
+def downgrade_to_passive(network_id, active_ips):
+    """Downgrade source nmap -> passive for devices missed by nmap but still seen by ARP."""
+    passive_ips = passive_scanner.get_recently_seen_ips()
+    if not passive_ips:
+        return
+
+    conn = sqlite3.connect(DB_PATH, timeout=30)
+    cursor = conn.cursor()
+
+    cursor.execute('''
+        SELECT dn.id, dn.ip FROM device_network dn
+        WHERE dn.network_id = ?
+        AND dn.source = 'nmap'
+        AND dn.last_seen < datetime('now', '-5 minutes')
+    ''', (network_id,))
+
+    for dn_id, ip in cursor.fetchall():
+        if ip not in active_ips and ip in passive_ips:
+            cursor.execute("UPDATE device_network SET source = 'passive' WHERE id = ?", (dn_id,))
+            print(f"[{datetime.now().strftime('%H:%M:%S')}] Downgraded nmap -> passive: {ip}")
+
+    conn.commit()
+    conn.close()
+
+
 def save_traffic_stats():
     """Save traffic stats for all tracked IPs, resolving network_id automatically."""
     stats = traffic_monitor.get_traffic_stats()
@@ -187,7 +212,9 @@ def monitor_loop(interval=30):
             for iface, result in results.items():
                 if result["error"] or not result["devices"]:
                     continue
-                new_ips, _ = save_devices(result["devices"], result["network_info"])
+                new_ips, network_id = save_devices(result["devices"], result["network_info"])
+                active_ips = {d['ip'] for d in result['devices']}
+                downgrade_to_passive(network_id, active_ips)
                 all_new_ips.extend(new_ips)
                 last_network_info = result["network_info"]
 

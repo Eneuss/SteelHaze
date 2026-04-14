@@ -86,6 +86,16 @@ class PassiveScanner:
         with self._lock:
             return {mac: dict(v) for mac, v in self._seen.items()}
 
+    def get_recently_seen_ips(self, seconds=300):
+        """Return set of IPs seen by ARP within the last `seconds` seconds."""
+        cutoff = datetime.now().timestamp() - seconds
+        with self._lock:
+            return {
+                data['ip']
+                for data in self._seen.values()
+                if data['last_seen'].timestamp() >= cutoff
+            }
+
     def save_new_to_db(self, network_info):
         """Save passively-seen devices to DB with source='passive'. Returns list of new IPs added."""
         seen  = self.get_seen()

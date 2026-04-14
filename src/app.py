@@ -62,16 +62,29 @@ def get_devices():
 @app.route('/api/stats')
 def get_stats():
     conn = db()
-    total = conn.execute('SELECT COUNT(*) FROM devices').fetchone()[0]
-    active = conn.execute('''
+    # current network filter: most recently seen network per interface
+    current_nets = '''
+        SELECT id FROM networks
+        WHERE last_seen IN (SELECT MAX(last_seen) FROM networks GROUP BY interface)
+    '''
+    total = conn.execute(f'''
+        SELECT COUNT(DISTINCT d.id) FROM devices d
+        JOIN device_network dn ON d.id = dn.device_id
+        WHERE dn.network_id IN ({current_nets})
+        AND dn.last_seen > datetime('now', '-24 hours')
+    ''').fetchone()[0]
+    active = conn.execute(f'''
         SELECT COUNT(DISTINCT d.id) FROM devices d
         JOIN device_network dn ON d.id = dn.device_id
         WHERE d.last_seen > ?
+        AND dn.network_id IN ({current_nets})
     ''', (datetime.now() - timedelta(minutes=5),)).fetchone()[0]
-    unknown = conn.execute('''
+    unknown = conn.execute(f'''
         SELECT COUNT(DISTINCT d.id) FROM devices d
         JOIN device_network dn ON d.id = dn.device_id
         WHERE dn.is_known = 0
+        AND dn.network_id IN ({current_nets})
+        AND dn.last_seen > datetime('now', '-24 hours')
         AND dn.id = (SELECT id FROM device_network WHERE device_id = d.id ORDER BY last_seen DESC LIMIT 1)
     ''').fetchone()[0]
     anomaly_count = conn.execute(
@@ -96,8 +109,13 @@ def get_interfaces():
     conn  = db()
     now   = datetime.now()
 
-    # nmap devices: last 24h, strictly source='nmap'
-    nmap_rows = conn.execute('''
+    current_nets = '''
+        SELECT id FROM networks
+        WHERE last_seen IN (SELECT MAX(last_seen) FROM networks GROUP BY interface)
+    '''
+
+    # nmap devices: current network only, last 24h
+    nmap_rows = conn.execute(f'''
         SELECT d.mac, d.label, d.first_seen,
                dn.ip, dn.last_seen, dn.is_known, n.interface
         FROM devices d
@@ -105,20 +123,23 @@ def get_interfaces():
         JOIN networks n ON dn.network_id = n.id
         WHERE dn.source = 'nmap'
         AND dn.last_seen > datetime('now', '-24 hours')
+        AND dn.network_id IN ({current_nets})
         AND dn.id = (
             SELECT id FROM device_network WHERE device_id = d.id ORDER BY last_seen DESC LIMIT 1
         )
         ORDER BY dn.last_seen DESC
     ''').fetchall()
 
-    # passive devices: ALL, no time cutoff
-    passive_rows = conn.execute('''
+    # passive devices: current network only, last 7 days
+    passive_rows = conn.execute(f'''
         SELECT d.mac, d.label, d.first_seen,
                dn.ip, dn.last_seen, dn.is_known, n.interface
         FROM devices d
         JOIN device_network dn ON d.id = dn.device_id
         JOIN networks n ON dn.network_id = n.id
         WHERE dn.source = 'passive'
+        AND dn.last_seen > datetime('now', '-7 days')
+        AND dn.network_id IN ({current_nets})
         AND dn.id = (
             SELECT id FROM device_network WHERE device_id = d.id ORDER BY last_seen DESC LIMIT 1
         )
