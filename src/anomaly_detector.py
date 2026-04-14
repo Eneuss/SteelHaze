@@ -78,7 +78,7 @@ def detect_anomalies():
                 "type": "STEALTH_DEVICE",
                 "ip": row[0],
                 "mac": row[1],
-                "details": "Device detected passively — does not respond to network scan",
+                "details": "Device detected passively - does not respond to network scan",
                 "timestamp": row[2],
             })
 

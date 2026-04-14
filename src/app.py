@@ -142,7 +142,7 @@ def get_interfaces():
             meta = db_by_mac.get(d.get('mac')) or db_by_ip.get(d.get('ip')) or {}
             return {
                 'ip':         d.get('ip'),
-                'mac':        d.get('mac') or meta.get('mac') or '—',
+                'mac':        d.get('mac') or meta.get('mac') or '-',
                 'label':      meta.get('label'),
                 'is_known':   meta.get('is_known', 0),
                 'first_seen': meta.get('first_seen'),
@@ -155,7 +155,7 @@ def get_interfaces():
         offline = [
             {
                 'ip':         r['ip'],
-                'mac':        r['mac'] or '—',
+                'mac':        r['mac'] or '-',
                 'label':      r['label'],
                 'is_known':   r['is_known'],
                 'first_seen': r['first_seen'],
@@ -170,7 +170,7 @@ def get_interfaces():
         passive = [
             {
                 'ip':         r['ip'],
-                'mac':        r['mac'] or '—',
+                'mac':        r['mac'] or '-',
                 'label':      r['label'],
                 'is_known':   r['is_known'],
                 'first_seen': r['first_seen'],

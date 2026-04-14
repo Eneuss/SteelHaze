@@ -9,6 +9,10 @@ from database import DB_PATH
 log = logging.getLogger('report')
 
 
+def _safe(text):
+    return str(text or '-').replace('—', '-').replace('–', '-')
+
+
 def _db():
     return sqlite3.connect(DB_PATH, timeout=10)
 
@@ -154,7 +158,7 @@ def _draw_table(pdf, headers, widths, rows):
         pdf.set_fill_color(240, 245, 255) if i % 2 == 0 else pdf.set_fill_color(255, 255, 255)
         pdf.set_text_color(33, 33, 33)
         for val, w in zip(row, widths):
-            pdf.cell(w, 5, str(val or '-')[:60], fill=True)
+            pdf.cell(w, 5, _safe(val)[:60], fill=True)
         pdf.ln()
     pdf.ln(1)
 
@@ -190,12 +194,12 @@ def _draw_cve_table(pdf, rows):
         pdf.set_fill_color(240, 245, 255) if i % 2 == 0 else pdf.set_fill_color(255, 255, 255)
         pdf.set_text_color(33, 33, 33)
         for val, w in zip([ip, str(port), service[:18], cve_id], widths[:4]):
-            pdf.cell(w, 5, str(val or '-'), fill=True)
+            pdf.cell(w, 5, _safe(val), fill=True)
         r, g, b = _SEV_COLORS.get(severity, (100, 100, 100))
         pdf.set_text_color(r, g, b)
-        pdf.cell(widths[4], 5, severity or '-', fill=True)
+        pdf.cell(widths[4], 5, _safe(severity), fill=True)
         pdf.set_text_color(33, 33, 33)
-        pdf.cell(widths[5], 5, str(desc or '')[:55], fill=True)
+        pdf.cell(widths[5], 5, _safe(desc)[:55], fill=True)
         pdf.ln()
     pdf.ln(1)
 
