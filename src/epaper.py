@@ -20,7 +20,7 @@ from datetime import datetime, timedelta
 log = logging.getLogger('epaper')
 
 try:
-    from waveshare_epd import epd2in13_V2
+    from waveshare_epd import epd2in13_V4
     from PIL import Image, ImageDraw, ImageFont
     _AVAILABLE = True
 except ImportError:
@@ -210,8 +210,8 @@ class _EpaperThread(threading.Thread):
 
     def run(self):
         try:
-            epd = epd2in13_V2.EPD()
-            epd.init(epd.FULL_UPDATE)
+            epd = epd2in13_V4.EPD()
+            epd.init()
             epd.Clear(0xFF)
             log.info('e-paper display ready')
         except Exception as e:
@@ -229,7 +229,7 @@ class _EpaperThread(threading.Thread):
 
         # Shutdown: clear and sleep
         try:
-            epd.init(epd.FULL_UPDATE)
+            epd.init()
             epd.Clear(0xFF)
             epd.sleep()
             log.info('e-paper display off')
