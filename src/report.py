@@ -121,7 +121,7 @@ def _generate_chart(dev_rows, anm_rows):
     return buf.read()
 
 
-# ── PDF helpers ────────────────────────────────────────────────────────────────
+# PDF helpers
 
 def _section_title(pdf, title):
     pdf.ln(3)
@@ -134,7 +134,6 @@ def _section_title(pdf, title):
 
 
 def _draw_table(pdf, headers, widths, rows):
-    # Header row
     pdf.set_font('Helvetica', 'B', 8)
     pdf.set_fill_color(45, 89, 134)
     pdf.set_text_color(255, 255, 255)
@@ -192,7 +191,6 @@ def _draw_cve_table(pdf, rows):
         pdf.set_text_color(33, 33, 33)
         for val, w in zip([ip, str(port), service[:18], cve_id], widths[:4]):
             pdf.cell(w, 5, str(val or '-'), fill=True)
-        # Severity with color
         r, g, b = _SEV_COLORS.get(severity, (100, 100, 100))
         pdf.set_text_color(r, g, b)
         pdf.cell(widths[4], 5, severity or '-', fill=True)
@@ -202,7 +200,7 @@ def _draw_cve_table(pdf, rows):
     pdf.ln(1)
 
 
-# ── Main entry point ───────────────────────────────────────────────────────────
+# Main entry point
 
 def generate():
     try:
@@ -225,7 +223,6 @@ def generate():
     pdf.set_auto_page_break(auto=True, margin=15)
     pdf.add_page()
 
-    # Header bar
     pdf.set_fill_color(26, 43, 74)
     pdf.rect(0, 0, 210, 22, 'F')
     pdf.set_font('Helvetica', 'B', 15)
@@ -237,7 +234,6 @@ def generate():
     pdf.set_text_color(33, 33, 33)
     pdf.set_y(28)
 
-    # Stats boxes
     box_w = 180 / 5
     labels = ['Total Devices', 'Active (5 min)', 'Unknown', 'Anomalies (24h)', 'CVEs']
     values = [stats['total'], stats['active'], stats['unknown'], stats['anomalies_24h'], stats['cves']]
@@ -257,7 +253,7 @@ def generate():
     pdf.set_y(50)
     pdf.set_text_color(33, 33, 33)
 
-    # Devices
+
     _section_title(pdf, 'Devices (last 24h)')
     _draw_table(pdf,
         headers=['IP', 'MAC', 'Label', 'Source', 'Last Seen'],
@@ -265,7 +261,7 @@ def generate():
         rows=[(r[0], r[1], r[2], r[3], r[4][:16] if r[4] else '') for r in devices],
     )
 
-    # Anomalies
+
     _section_title(pdf, 'Anomalies (last 24h)')
     _draw_table(pdf,
         headers=['Time', 'Type', 'IP', 'Details'],
@@ -273,11 +269,11 @@ def generate():
         rows=[(r[0][:16] if r[0] else '', r[1], r[2], r[4]) for r in anomalies],
     )
 
-    # CVEs
+
     _section_title(pdf, 'CVE Findings')
     _draw_cve_table(pdf, cves)
 
-    # Charts
+
     if chart_png:
         _section_title(pdf, 'Activity (last 7 days)')
         pdf.image(io.BytesIO(chart_png), x=15, w=180)
