@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 import nmap
 import netifaces
 import ipaddress
@@ -52,15 +51,7 @@ def get_network_info():
 
 
 def scan_all_parallel(on_status=None):
-    """
-    Scan the network via the default gateway interface. nmap picks the interface
-    automatically based on routing — on this machine that is eth0 (metric 100),
-    which can reach all devices including WiFi clients (AP isolation only blocks
-    WiFi-to-WiFi, not wired-to-WiFi).
-
-    Returns {iface: {subnet, network_info, devices, error}}.
-    Never raises — errors are captured in result['error'].
-    """
+    """Scan via default gateway interface. Returns {iface: {...}}. Never raises."""
     net    = get_network_info()
     iface  = net["interface"]
     subnet = net["subnet"]

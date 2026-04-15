@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 import sys
 import os
 sys.path.insert(0, os.path.dirname(__file__))
@@ -62,7 +61,7 @@ def get_devices():
 @app.route('/api/stats')
 def get_stats():
     conn = db()
-    # current network filter: most recently seen network per interface
+    #current network filter: most recently seen network per interface
     current_nets = '''
         SELECT id FROM networks
         WHERE last_seen IN (SELECT MAX(last_seen) FROM networks GROUP BY interface)
@@ -114,7 +113,7 @@ def get_interfaces():
         WHERE last_seen IN (SELECT MAX(last_seen) FROM networks GROUP BY interface)
     '''
 
-    # nmap devices: current network only, last 24h
+    #nmap devices: current network only, last 24h
     nmap_rows = conn.execute(f'''
         SELECT d.mac, d.label, d.first_seen,
                dn.ip, dn.last_seen, dn.is_known, n.interface
@@ -130,7 +129,7 @@ def get_interfaces():
         ORDER BY dn.last_seen DESC
     ''').fetchall()
 
-    # passive devices: current network only, last 7 days
+    #passive devices: current network only, last 7 days
     passive_rows = conn.execute(f'''
         SELECT d.mac, d.label, d.first_seen,
                dn.ip, dn.last_seen, dn.is_known, n.interface
@@ -337,21 +336,21 @@ def get_ports_and_cves():
     import socket
     conn = db()
 
-    # CVE findings are always available — use as primary source
+    #CVE findings first
     cves = conn.execute('''
         SELECT f.ip, f.port, f.service, f.cve_id, f.severity, f.description
         FROM cve_findings f
         ORDER BY f.ip, f.port
     ''').fetchall()
 
-    # Open ports (populated after first scan with new code — may be empty)
+    #open ports, may be empty on first run
     ports = conn.execute('''
         SELECT p.ip, p.port, p.service
         FROM open_ports p
         ORDER BY p.ip, p.port
     ''').fetchall()
 
-    # mac + label lookup by IP
+    #mac + label lookup by IP
     device_info = {}
     for r in conn.execute('''
         SELECT dn.ip, d.mac, d.label
@@ -365,7 +364,6 @@ def get_ports_and_cves():
     SEV_ORDER = {'CRITICAL': 0, 'HIGH': 1, 'MEDIUM': 2, 'LOW': 3}
     hosts = {}
 
-    # Build from CVE findings first — always works even on first run
     for c in cves:
         ip = c['ip']
         if ip not in hosts:
@@ -379,7 +377,7 @@ def get_ports_and_cves():
             'description': c['description'],
         })
 
-    # Merge open_ports — adds clean ports and fills in any missing hosts
+    #merge open_ports
     for p in ports:
         ip = p['ip']
         if ip not in hosts:
@@ -388,7 +386,7 @@ def get_ports_and_cves():
         if p['port'] not in hosts[ip]['ports']:
             hosts[ip]['ports'][p['port']] = {'service': p['service'], 'cves': []}
 
-    # Build final sorted structure
+    #Build final sorted structure
     result = []
     for host in hosts.values():
         vulnerable, clean = [], []

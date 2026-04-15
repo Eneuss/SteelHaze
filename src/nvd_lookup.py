@@ -1,15 +1,8 @@
-#!/usr/bin/env python3
 import requests
 
 
 def lookup_cve(port, service=None, product=None, max_results=3):
-    """
-    Query the NVD API for CVEs related to the service on the given port.
-    Uses the nmap-detected service/product name when available.
-    Returns a list of dicts with id, severity, description.
-    """
-    # Build the best possible search keyword:
-    # prefer product name (e.g. "OpenSSH") > service name (e.g. "ssh") > skip unknown ports
+    #product name > service name > skip unknowns
     if product and product.strip():
         keyword = product.strip()
     elif service and service.strip() and service.strip() not in ("unknown", "tcpwrapped"):

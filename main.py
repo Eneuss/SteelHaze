@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 SteelHaze V2 — main entry point.
 Starts both the network monitor loop and the Flask web dashboard in parallel.

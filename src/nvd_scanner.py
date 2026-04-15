@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Deep CVE scan: detects open ports + service versions on all hosts,
 queries the NVD API, and saves findings to the database.
@@ -22,7 +21,7 @@ def run_nvd_scan(network_range=None):
     if network_range is None:
         network_range = get_local_network()
 
-    # Collect all local IPs across every interface so none get self-scanned
+    #skip our own IPs
     local_ips = get_local_ips()
     fallback = get_local_ip()
     if fallback and fallback not in local_ips:
@@ -62,8 +61,7 @@ def run_nvd_scan(network_range=None):
         print(f"  Ports : {list(tcp_ports.keys())}")
         print(f"{'='*60}")
 
-        # Short-lived connection per host — releases the write lock between hosts
-        # so the monitor loop can write in between without hitting a busy error.
+        #one conn per host so monitor can write in between
         conn = _db()
         cursor = conn.cursor()
 
@@ -103,8 +101,7 @@ def run_nvd_scan(network_range=None):
         conn.commit()
         conn.close()
 
-        # CVE anomalies saved in a separate short transaction after the host
-        # connection is already closed — avoids nested write overlap.
+        #save anomalies after conn is closed
         for port, data in tcp_ports.items():
             service = data.get("name", "unknown")
             product = data.get("product", "")
@@ -113,7 +110,7 @@ def run_nvd_scan(network_range=None):
                 if cve['severity'] in ('CRITICAL', 'HIGH'):
                     save_cve_anomaly(host, mac, cve['id'], cve['severity'], cve['description'])
 
-    # Remove rows from the previous scan — all new rows are already committed
+    #clean up old scan rows
     conn = _db()
     cursor = conn.cursor()
     cursor.execute("DELETE FROM cve_findings WHERE timestamp < ?", (scan_start,))

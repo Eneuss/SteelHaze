@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 import io
 import sqlite3
 from datetime import datetime, timedelta
@@ -106,7 +105,7 @@ def _generate_chart(dev_rows, anm_rows):
         ax.set_title(title, fontsize=10, pad=8)
         ax.tick_params(labelsize=8)
         if rows:
-            labels = [r[0][5:] for r in rows]  # MM-DD
+            labels = [r[0][5:] for r in rows]  #MM-DD
             values = [r[1] for r in rows]
             ax.bar(labels, values, color=color, width=0.6)
             ax.tick_params(axis='x', rotation=30)
@@ -122,7 +121,7 @@ def _generate_chart(dev_rows, anm_rows):
     return buf.read()
 
 
-# PDF helpers
+#PDF helpers
 
 def _section_title(pdf, title):
     pdf.ln(3)
@@ -206,7 +205,7 @@ def _draw_cve_table(pdf, rows):
     pdf.ln(1)
 
 
-# Main entry point
+#Main entry point
 
 def generate():
     try:

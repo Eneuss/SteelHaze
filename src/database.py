@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 import sqlite3
 import os
 
@@ -33,7 +32,7 @@ def init_database():
         )
     ''')
 
-    # Add label column to existing databases that predate this feature
+    #label column migration for old DBs
     cursor.execute("PRAGMA table_info(devices)")
     if 'label' not in [row[1] for row in cursor.fetchall()]:
         cursor.execute("ALTER TABLE devices ADD COLUMN label TEXT")
@@ -54,7 +53,7 @@ def init_database():
         )
     ''')
 
-    # Migration: add source column to existing databases
+    #source column migration
     cursor.execute("PRAGMA table_info(device_network)")
     if 'source' not in [row[1] for row in cursor.fetchall()]:
         cursor.execute("ALTER TABLE device_network ADD COLUMN source TEXT DEFAULT 'nmap'")
@@ -128,8 +127,7 @@ def init_database():
         )
     ''')
 
-    # Migration: merge duplicate MAC entries in devices table
-    # (can occur if passive scanner and nmap both inserted the same MAC before one committed)
+    #merge duplicate MACs (race between passive + nmap)
     cursor.execute('''
         SELECT mac FROM devices
         WHERE mac IS NOT NULL GROUP BY mac HAVING COUNT(*) > 1
@@ -144,7 +142,7 @@ def init_database():
                 break
         dup_ids = [r[0] for r in rows if r[0] != keep_id]
         for dup_id in dup_ids:
-            # device_network has UNIQUE(device_id, network_id) - delete conflicting rows first
+            #delete conflicts first (UNIQUE constraint)
             cursor.execute('''
                 DELETE FROM device_network WHERE device_id = ?
                 AND network_id IN (SELECT network_id FROM device_network WHERE device_id = ?)

@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 import sqlite3
 import time
 import threading
@@ -61,7 +60,7 @@ def save_devices(devices, network_info):
                 cursor.execute("INSERT INTO devices (mac) VALUES (?)", (mac,))
                 device_id = cursor.lastrowid
         else:
-            # No MAC — identify by IP within this network
+            #No MAC — identify by IP within this network
             cursor.execute(
                 "SELECT device_id FROM device_network WHERE ip = ? AND network_id = ?",
                 (ip, network_id)
@@ -77,7 +76,6 @@ def save_devices(devices, network_info):
                 cursor.execute("INSERT INTO devices (mac) VALUES (?)", (None,))
                 device_id = cursor.lastrowid
 
-        # Find or create device_network entry
         cursor.execute(
             "SELECT id FROM device_network WHERE device_id = ? AND network_id = ?",
             (device_id, network_id)
@@ -89,7 +87,7 @@ def save_devices(devices, network_info):
                 (datetime.now(), ip, dn_row[0])
             )
         else:
-            # Check if this IP was previously held by a different MAC
+            #Check if this IP was previously held by a different MAC
             if mac and mac != "N/A":
                 cursor.execute('''
                     SELECT d.mac FROM device_network dn
@@ -157,7 +155,6 @@ def downgrade_to_passive(network_id, active_ips):
 
 
 def save_traffic_stats():
-    """Save traffic stats for all tracked IPs, resolving network_id automatically."""
     stats = traffic_monitor.get_traffic_stats()
     if not stats:
         return

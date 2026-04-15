@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 import threading
 import subprocess
 import sqlite3
@@ -17,7 +16,7 @@ from database import DB_PATH
 
 class PassiveScanner:
     def __init__(self):
-        self._seen = {}   # mac -> {ip, first_seen, last_seen}
+        self._seen = {}   #mac -> {ip, first_seen, last_seen}
         self._lock = threading.Lock()
 
     def _arp_handler(self, pkt):
@@ -54,7 +53,7 @@ class PassiveScanner:
                 now = datetime.now()
                 for line in result.stdout.splitlines():
                     parts = line.split()
-                    # format: <ip> dev <iface> lladdr <mac> <state>
+                    #format: <ip> dev <iface> lladdr <mac> <state>
                     if len(parts) < 5 or ":" not in parts[4]:
                         continue
                     ip    = parts[0]
@@ -139,7 +138,7 @@ class PassiveScanner:
             )
             dn = cursor.fetchone()
             if dn:
-                # Only update timestamp/ip; don't downgrade nmap -> passive
+                #Only update timestamp/ip; don't downgrade nmap -> passive
                 cursor.execute(
                     "UPDATE device_network SET last_seen = ?, ip = ? WHERE id = ?",
                     (now, ip, dn[0])

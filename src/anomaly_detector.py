@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 import sqlite3
 from datetime import datetime
 from database import DB_PATH
@@ -10,7 +9,7 @@ def detect_anomalies():
     cursor = conn.cursor()
     anomalies = []
 
-    # 1. High traffic: more than 500 MB in the last 5 minutes
+    #1. High traffic: more than 500 MB in the last 5 minutes
     cursor.execute('''
         SELECT dn.ip, d.mac,
                SUM(t.bytes_sent + t.bytes_received) AS total_bytes,
@@ -37,7 +36,7 @@ def detect_anomalies():
                 "timestamp": row[3],
             })
 
-    # 2. New unknown devices (seen in the last 10 minutes, not yet marked known)
+    #2. new unknown devices (first seen <10 min ago)
     cursor.execute('''
         SELECT dn.ip, d.mac, dn.first_seen
         FROM devices d
@@ -59,7 +58,7 @@ def detect_anomalies():
                 "timestamp": row[2],
             })
 
-    # 3. Stealth devices: passive-only, >5 min old, not already alerted in 24h
+    #3. Stealth devices: passive-only, >5 min old, not already alerted in 24h
     cursor.execute('''
         SELECT dn.ip, d.mac, dn.first_seen
         FROM devices d
@@ -82,7 +81,7 @@ def detect_anomalies():
                 "timestamp": row[2],
             })
 
-    # 4. IP conflict: two different MACs simultaneously seen at the same IP
+    #4. IP conflict: two different MACs simultaneously seen at the same IP
     cursor.execute('''
         SELECT dn.ip, GROUP_CONCAT(DISTINCT d.mac) AS macs
         FROM device_network dn
@@ -133,7 +132,7 @@ def save_anomaly(anomaly):
 def save_cve_anomaly(ip, mac, cve_id, severity, description):
     conn = sqlite3.connect(DB_PATH, timeout=30)
     cursor = conn.cursor()
-    # skip if same CVE already logged for this IP in the last 24h
+    #skip if same CVE already logged for this IP in the last 24h
     cursor.execute('''
         SELECT COUNT(*) FROM anomalies
         WHERE type = 'CVE_FOUND' AND ip = ?
