@@ -1,12 +1,9 @@
 #!/usr/bin/env python3
 import io
-import logging
 import sqlite3
 from datetime import datetime, timedelta
 
 from database import DB_PATH
-
-log = logging.getLogger('report')
 
 
 def _safe(text):
@@ -18,7 +15,7 @@ def _db():
 
 
 def _stats(conn):
-    now = datetime.utcnow()
+    now = datetime.now()
     total = conn.execute('SELECT COUNT(*) FROM devices').fetchone()[0]
     active = conn.execute('''
         SELECT COUNT(DISTINCT d.id) FROM devices d

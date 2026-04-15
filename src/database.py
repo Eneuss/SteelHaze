@@ -138,14 +138,13 @@ def init_database():
         cursor.execute('SELECT id, label FROM devices WHERE mac = ? ORDER BY first_seen ASC', (mac,))
         rows = cursor.fetchall()
         keep_id = rows[0][0]
-        # Prefer the entry that has a label
         for rid, label in rows:
             if label:
                 keep_id = rid
                 break
         dup_ids = [r[0] for r in rows if r[0] != keep_id]
         for dup_id in dup_ids:
-            # device_network has UNIQUE(device_id, network_id) — delete conflicting rows first
+            # device_network has UNIQUE(device_id, network_id) - delete conflicting rows first
             cursor.execute('''
                 DELETE FROM device_network WHERE device_id = ?
                 AND network_id IN (SELECT network_id FROM device_network WHERE device_id = ?)

@@ -16,7 +16,7 @@ SteelHazeV2/
 │   ├── monitor.py           # Main 30s monitoring loop, device/traffic persistence
 │   ├── traffic_monitor.py   # Scapy IP sniffer (bytes/packets per IP)
 │   ├── passive_scanner.py   # Passive ARP sniffer + ARP cache reader
-│   ├── anomaly_detector.py  # Detects HIGH_TRAFFIC, NEW_DEVICE, STEALTH_DEVICE, IP_REASSIGNED
+│   ├── anomaly_detector.py  # Detects HIGH_TRAFFIC, NEW_DEVICE, STEALTH_DEVICE, IP_REASSIGNED, IP_CONFLICT
 │   ├── nvd_lookup.py        # NVD API CVE lookup by service name
 │   ├── nvd_scanner.py       # Deep all-port scan + CVE lookup (runs every 30 min)
 │   ├── scan_state.py        # Shared in-memory scan state between monitor and Flask
@@ -84,15 +84,15 @@ Needs root for packet sniffing (Scapy). Dashboard at **http://localhost:5000**.
 - **Passive detection** runs continuously alongside the scan: ARP sniffer + kernel ARP cache reader catch devices that don't respond to nmap (IoT, AP-isolated, stealthy hosts)
 - **Traffic monitoring** with Scapy — tracks bytes sent/received per device in real time
 - **Deep CVE scan** every 30 min: scans all ports (`-p-`), detects service versions, queries NVD API for CVEs
-- **Anomaly detection**: high traffic, new unknown devices, stealth devices (passive-only), IP reassignment
-- **Telegram notifications**: optional bot that sends real-time alerts and a daily summary
-- **Persists everything** to SQLite — history survives restarts
+- **Anomaly detection**: high traffic, new unknown devices, stealth devices (passive-only), IP reassignment, IP conflicts
+- **Telegram notifications**: optional bot that sends real-time alerts and scheduled PDF reports at 08:00 and 20:00
+- **Persists everything** to SQLite — history survives restarts, tracks all networks ever seen
 
 ### Dashboard pages
 
 | Page | URL | Shows |
 |---|---|---|
-| Devices | `/` | Active devices from scan + passive-only section per interface card |
+| Devices | `/` | nmap-scanned devices + passive-only section per interface card; 3-state status (active / recent / gone) |
 | Traffic | `/traffic` | Bandwidth per device (last 24h) |
 | Anomalies | `/anomalies` | All alerts (last 24h) |
 | CVE Findings | `/cves` | Open ports + CVEs grouped per host |
@@ -199,7 +199,7 @@ Junction table linking a device to a network. Holds the IP (network-specific) an
 
 Constraint: `UNIQUE(device_id, network_id)`
 
-> `source` upgrades from `passive` → `nmap` automatically when nmap finds the device. It never downgrades.
+> `source` upgrades from `passive` → `nmap` when nmap finds the device. It downgrades `nmap` → `passive` automatically if a device stops responding to scans but is still visible via ARP (missed 5+ consecutive minutes by nmap but present in ARP cache).
 
 ---
 
@@ -256,6 +256,7 @@ All alerts from the anomaly detector and CVE scanner.
 | `STEALTH_DEVICE` | Passive-only device, >5 min old, never seen by nmap | Once per MAC per 24h |
 | `IP_REASSIGNED` | IP now seen with a different MAC than before | Once per IP per 24h |
 | `CVE_FOUND` | CVE found on a device port | Once per CVE+IP per 24h |
+| `IP_CONFLICT` | Two different MACs seen at the same IP within 5 minutes | Once per IP per 1h |
 
 ---
 
