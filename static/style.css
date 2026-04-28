@@ -137,7 +137,6 @@ body.light .badge-purple { color: #7c3aed; border-color: #a78bfa; }
 .empty { padding: 32px; text-align: center; color: var(--text-sec); font-size: .9rem; }
 
 /* chart */
-.chart-wrap    { padding: 16px; height: 220px; }
 .chart-wrap-lg { padding: 16px; height: 280px; }
 
 /* charts page grid */

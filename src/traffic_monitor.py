@@ -67,9 +67,4 @@ class TrafficMonitor:
                 }
         return stats
 
-    def reset_stats(self):
-        with self._lock:
-            self.traffic_data.clear()
-
-
 traffic_monitor = TrafficMonitor()

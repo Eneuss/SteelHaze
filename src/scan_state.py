@@ -4,14 +4,6 @@ import copy
 
 _lock = threading.Lock()
 _interfaces = {}
-#{
-#  'eth0': {
-#    'subnet':  '192.168.1.0/24',
-#    'status':  'idle' | 'scanning' | 'done' | 'no_devices' | 'error',
-#    'error':   None | 'error message string',
-#    'devices': [{ip, mac, status}, ...]   #raw nmap results for this interface
-#  }
-#}
 
 
 def update(iface, subnet, status, error=None, devices=None):
