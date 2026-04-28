@@ -106,7 +106,6 @@ def get_stats():
 def get_interfaces():
     state = scan_state.get_all()
     conn  = db()
-    now   = datetime.now()
 
     current_nets = '''
         SELECT id FROM networks
@@ -145,42 +144,16 @@ def get_interfaces():
         ORDER BY dn.last_seen DESC
     ''').fetchall()
 
-    reassigned_ips = set(r[0] for r in conn.execute('''
-        SELECT DISTINCT ip FROM anomalies
-        WHERE type = 'IP_REASSIGNED' AND timestamp > datetime('now', '-24 hours')
-    ''').fetchall())
-
-    conflict_ips = set(r[0] for r in conn.execute('''
-        SELECT DISTINCT ip FROM anomalies
-        WHERE type = 'IP_CONFLICT' AND timestamp > datetime('now', '-1 hours')
-    ''').fetchall())
-
     conn.close()
 
-    def offline_state(last_seen_str):
-        if not last_seen_str:
-            return 'gone'
-        try:
-            ls   = datetime.strptime(str(last_seen_str)[:19], '%Y-%m-%d %H:%M:%S')
-            secs = (now - ls).total_seconds()
-            if secs < 35:    return 'active'
-            if secs < 3600:  return 'recent'
-            return 'gone'
-        except Exception:
-            return 'gone'
-
-    def make_device(r, state_override=None):
-        ip = r['ip'] or ''
+    def make_device(r):
         return {
-            'ip':            ip,
-            'mac':           r['mac'] or '-',
-            'label':         r['label'],
-            'is_known':      r['is_known'],
-            'first_seen':    r['first_seen'],
-            'last_seen':     r['last_seen'],
-            'offline_state': state_override or offline_state(r['last_seen']),
-            'ip_reassigned': ip in reassigned_ips,
-            'ip_conflict':   ip in conflict_ips,
+            'ip':         r['ip'] or '',
+            'mac':        r['mac'] or '-',
+            'label':      r['label'],
+            'is_known':   r['is_known'],
+            'first_seen': r['first_seen'],
+            'last_seen':  r['last_seen'],
         }
 
     nmap_by_iface    = {}
@@ -210,17 +183,13 @@ def get_interfaces():
         active = []
         for d in raw_devices:
             meta = nmap_by_mac.get(d.get('mac')) or nmap_by_ip.get(d.get('ip')) or {}
-            ip   = d.get('ip') or ''
             active.append({
-                'ip':            ip,
-                'mac':           d.get('mac') or meta.get('mac') or '-',
-                'label':         meta.get('label'),
-                'is_known':      meta.get('is_known', 0),
-                'first_seen':    meta.get('first_seen'),
-                'last_seen':     meta.get('last_seen'),
-                'offline_state': 'active',
-                'ip_reassigned': ip in reassigned_ips,
-                'ip_conflict':   ip in conflict_ips,
+                'ip':         d.get('ip') or '',
+                'mac':        d.get('mac') or meta.get('mac') or '-',
+                'label':      meta.get('label'),
+                'is_known':   meta.get('is_known', 0),
+                'first_seen': meta.get('first_seen'),
+                'last_seen':  meta.get('last_seen'),
             })
 
         offline = [

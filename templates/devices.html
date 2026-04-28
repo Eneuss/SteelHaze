@@ -78,14 +78,9 @@ async function saveLabel(mac) {
 }
 
 function deviceRow(d) {
-  const dotClass = { active: 'dot-active', recent: 'dot-recent', gone: 'dot-offline' }[d.offline_state] || 'dot-offline';
-  const dot = `<span class="status-dot ${dotClass}"></span>`;
-
-  const ipFlags = [
-    d.ip_conflict   ? '<span class="badge badge-red"   style="margin-left:6px">IP conflict</span>'   : '',
-    d.ip_reassigned ? '<span class="badge badge-orange" style="margin-left:6px">IP reassigned</span>' : '',
-  ].join('');
-
+  const now = Date.now();
+  const active = (now - parseUTC(d.last_seen).getTime()) < 300000;
+  const dot = `<span class="status-dot ${active ? 'dot-active' : 'dot-offline'}"></span>`;
   const knownBadge = d.is_known
     ? '<span class="badge badge-green">Known</span>'
     : '<span class="badge badge-yellow">Unknown</span>';
@@ -99,7 +94,7 @@ function deviceRow(d) {
        </td>`
     : d.is_known
     ? `<td id="lc-${s}">
-         <span class="no-label">-</span>
+         <span class="no-label">—</span>
          <span class="edit-icon" onclick="showEditLabel('${d.mac}', '')">✎</span>
        </td>`
     : `<td id="lc-${s}"></td>`;
@@ -108,14 +103,9 @@ function deviceRow(d) {
     ? `<td id="ac-${s}"></td>`
     : `<td id="ac-${s}"><button class="btn" onclick="showMarkKnown('${d.mac}')">Mark Known</button></td>`;
 
-  const rowClass = [
-    d.offline_state === 'gone' ? 'row-gone' : '',
-    d.ip_conflict ? 'row-conflict' : '',
-  ].filter(Boolean).join(' ');
-
-  return `<tr class="${rowClass}">
-    <td>${dot}<code>${d.ip}</code>${ipFlags}</td>
-    <td><code>${d.mac || '-'}</code></td>
+  return `<tr>
+    <td>${dot}<code>${d.ip}</code></td>
+    <td><code>${d.mac || '—'}</code></td>
     ${labelCell}
     <td>
       <span class="time-rel">${timeAgo(d.first_seen)}</span>
@@ -155,34 +145,29 @@ async function loadPage() {
       return new Date(b.last_seen) - new Date(a.last_seen);
     });
 
-    const tableHtml = devices.length
-      ? `<table>
+    const passive = info.passive || [];
+    const total = devices.length + passive.length;
+
+    let tableHtml;
+    if (!devices.length && !passive.length) {
+      tableHtml = `<div class="empty" style="padding:16px">${info.status === 'error' ? 'Scan failed.' : 'No devices found yet.'}</div>`;
+    } else {
+      const rows = [
+        ...devices.map(deviceRow),
+        ...(passive.length ? [
+          `<tr class="passive-divider"><td colspan="7">Passive detection — not responding to scan</td></tr>`,
+          ...passive.map(deviceRow),
+        ] : []),
+      ].join('');
+      tableHtml = `<table>
            <thead><tr>
              <th>IP</th><th>MAC</th><th>Label</th>
              <th>First Seen</th><th>Last Seen</th><th>Status</th><th>Action</th>
            </tr></thead>
-           <tbody>${devices.map(deviceRow).join('')}</tbody>
-         </table>`
-      : `<div class="empty" style="padding:16px">${info.status === 'error' ? 'Scan failed.' : 'No devices found yet.'}</div>`;
+           <tbody>${rows}</tbody>
+         </table>`;
+    }
 
-    const passive = info.passive || [];
-    const passiveHtml = passive.length
-      ? `<div class="passive-section">
-           <div class="passive-label">Passive detection - not responding to scan</div>
-           <table>
-             <thead><tr>
-               <th>IP</th><th>MAC</th><th>Label</th>
-               <th>First Seen</th><th>Last Seen</th><th>Status</th><th>Action</th>
-             </tr></thead>
-             <tbody>${passive.map(d => {
-               const base = deviceRow(d);
-               return !d.is_known ? base.replace('<tr class="', '<tr class="row-suspicious ').replace('<tr class="">', '<tr class="row-suspicious">') : base;
-             }).join('')}</tbody>
-           </table>
-         </div>`
-      : '';
-
-    const total = devices.length + passive.length;
     return `<div class="card" style="margin-bottom:20px">
       <div class="card-header iface-header">
         <span class="iface-name">${iface}</span>
@@ -192,7 +177,6 @@ async function loadPage() {
       </div>
       ${errorNote}
       ${tableHtml}
-      ${passiveHtml}
     </div>`;
   }).join('');
 }

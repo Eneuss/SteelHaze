@@ -1,9 +1,6 @@
 """
-SteelHaze V2 — main entry point.
+SteelHaze starting point.
 Starts both the network monitor loop and the Flask web dashboard in parallel.
-
-Usage:
-    sudo python main.py
 """
 import os
 import threading
