@@ -127,7 +127,10 @@ def init_database():
         )
     ''')
 
-    #merge duplicate MACs (race between passive + nmap)
+    #normalise all MACs to lowercase
+    cursor.execute("UPDATE devices SET mac = LOWER(mac) WHERE mac IS NOT NULL AND mac != LOWER(mac)")
+
+    #merge duplicate MACs (race between passive + nmap, or case mismatch)
     cursor.execute('''
         SELECT mac FROM devices
         WHERE mac IS NOT NULL GROUP BY mac HAVING COUNT(*) > 1

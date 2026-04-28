@@ -25,7 +25,7 @@ class PassiveScanner:
         if pkt[ARP].op not in (1, 2):
             return
         ip  = pkt[ARP].psrc
-        mac = pkt[ARP].hwsrc
+        mac = pkt[ARP].hwsrc.lower()
         if ip == "0.0.0.0" or not mac or mac == "ff:ff:ff:ff:ff:ff":
             return
         now = datetime.now()
@@ -57,7 +57,7 @@ class PassiveScanner:
                     if len(parts) < 5 or ":" not in parts[4]:
                         continue
                     ip    = parts[0]
-                    mac   = parts[4]
+                    mac   = parts[4].lower()
                     state = parts[-1]
                     if ip in local or state in ("FAILED", "INCOMPLETE"):
                         continue

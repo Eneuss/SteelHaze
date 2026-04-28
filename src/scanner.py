@@ -96,7 +96,7 @@ def _scan_single(subnet):
             continue
         devices.append({
             "ip":        host,
-            "mac":       nm[host]["addresses"].get("mac", "N/A"),
+            "mac":       nm[host]["addresses"].get("mac", "N/A").lower(),
             "status":    nm[host]["status"]["state"],
             "timestamp": datetime.now().isoformat(),
         })

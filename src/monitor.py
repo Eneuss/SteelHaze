@@ -44,7 +44,7 @@ def save_devices(devices, network_info):
     network_id = get_or_create_network(cursor, network_info)
 
     for device in devices:
-        mac = device["mac"]
+        mac = device["mac"].lower() if device.get("mac") else device["mac"]
         ip = device["ip"]
 
         if mac and mac != "N/A":
