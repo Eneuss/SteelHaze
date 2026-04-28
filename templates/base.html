@@ -13,6 +13,7 @@
 <header>
   <h1>SteelHaze V2</h1>
   <span class="subtitle">Network Security Monitor</span>
+  <button id="theme-toggle" onclick="toggleTheme()"></button>
   <span id="refresh-timer">Refreshing in <b id="countdown">30</b>s</span>
 </header>
 
@@ -81,6 +82,19 @@ setInterval(() => {
 }, 1000);
 
 loadStats();
+
+function toggleTheme() {
+  const light = document.body.classList.toggle('light');
+  localStorage.setItem('theme', light ? 'light' : 'dark');
+  document.getElementById('theme-toggle').textContent = light ? 'Dark' : 'Light';
+}
+
+(function() {
+  const saved = localStorage.getItem('theme');
+  const light = saved ? saved === 'light' : false;
+  if (light) document.body.classList.add('light');
+  document.getElementById('theme-toggle').textContent = light ? 'Dark' : 'Light';
+})();
 </script>
 
 <!-- page specific js goes here -->

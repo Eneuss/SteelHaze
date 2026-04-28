@@ -33,8 +33,9 @@
 
 {% block scripts %}
 <script>
-const GRID  = '#202840';
-const TICKS = '#8b949e';
+const light = document.body.classList.contains('light');
+const GRID  = light ? '#c8d0da' : '#202840';
+const TICKS = light ? '#57606a' : '#8b949e';
 
 function fmtMB(b) {
   if (b >= 1073741824) return (b / 1073741824).toFixed(1) + ' GB';
