@@ -138,6 +138,13 @@ def get_interfaces():
         ORDER BY dn.last_seen DESC
     ''').fetchall()
 
+    ssid_by_iface = {}
+    for r in conn.execute('''
+        SELECT interface, ssid FROM networks
+        WHERE last_seen IN (SELECT MAX(last_seen) FROM networks GROUP BY interface)
+    ''').fetchall():
+        ssid_by_iface[r['interface']] = r['ssid']
+
     conn.close()
 
     def make_device(r):
@@ -197,6 +204,7 @@ def get_interfaces():
 
         result[iface] = {
             'subnet':  s.get('subnet', ''),
+            'ssid':    ssid_by_iface.get(iface),
             'status':  s.get('status', 'idle'),
             'error':   s.get('error'),
             'devices': active + offline,

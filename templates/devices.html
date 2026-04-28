@@ -170,7 +170,7 @@ async function loadPage() {
 
     return `<div class="card" style="margin-bottom:20px">
       <div class="card-header iface-header">
-        <span class="iface-name">${iface}</span>
+        <span class="iface-name">${info.ssid || iface}</span>
         <span class="iface-subnet">${info.subnet || ''}</span>
         ${badge}
         <span class="iface-count">${total} device${total !== 1 ? 's' : ''}</span>
