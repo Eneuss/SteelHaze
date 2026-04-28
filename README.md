@@ -1,6 +1,6 @@
 # SteelHaze
 
-Network security monitor with a web dashboard, persistent storage, passive device detection, traffic monitoring, anomaly detection, and CVE lookups.
+Network security monitor with a web dashboard, persistent storage, passive device detection, traffic monitoring, anomaly detection, CVE lookups, and optional e-paper display support.
 
 ---
 
@@ -22,6 +22,7 @@ SteelHazeV2/
 │   ├── scan_state.py        # Shared in-memory scan state between monitor and Flask
 │   ├── telegram_notify.py   # Telegram bot — alerts, scheduled reports, /report command
 │   ├── report.py            # PDF report generator (fpdf2 + matplotlib charts)
+│   ├── epaper_display.py    # Waveshare 2.13" V4 e-paper display (optional)
 │   └── app.py               # Flask REST API + page routes
 ├── templates/
 │   ├── base.html            # Shared layout: header, nav, stats bar, JS helpers
@@ -143,6 +144,48 @@ Requires `fpdf2` and `matplotlib`:
 ```bash
 sudo pip3 install fpdf2 matplotlib --break-system-packages
 ```
+
+---
+
+## E-Paper Display (optional)
+
+Supports a **Waveshare 2.13" V4** e-paper screen connected via SPI. If no display is connected or the library is missing the monitor runs identically — nothing crashes.
+
+### Setup
+
+```bash
+# clone the official Waveshare library
+git clone https://github.com/waveshare/e-Paper.git
+
+# install it system-wide so sudo python3 can find it
+cd e-Paper/RaspberryPi_JetsonNano/python && sudo python3 setup.py install
+```
+
+### What it shows
+
+Updates twice per scan cycle — once at the start (scanning state) and once at the end (results):
+
+```
+┌──────────────────────────────────────────────┐
+│ SteelHaze         (↑)         ◯     14:32  │  ← header: radar + scan dot + time
+├──────────────────────────────────────────────┤
+│ HomeWiFi                                     │
+│ 192.168.1.0/24                               │
+├──────────────────────────────────────────────┤
+│ Devices: 12              Unknown: 3          │
+├──────────────────────────────────────────────┤
+│ Anomalies: 2                    CVEs: 5      │
+├──────────────────────────────────────────────┤
+│ Updated: 28 Apr  14:32        SCANNING...    │
+└──────────────────────────────────────────────┘
+```
+
+| Element | Behaviour |
+|---|---|
+| Radar `(↑)` | Rotates 45° each scan cycle — completes 360° every 4 minutes |
+| Scan dot `◯` / `●` | Hollow = idle, filled = scan in progress |
+| `SCANNING...` | Appears in footer only during active scan |
+| Display on shutdown | `Ctrl+C` puts the display to sleep cleanly |
 
 ---
 

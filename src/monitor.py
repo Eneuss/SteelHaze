@@ -12,6 +12,7 @@ from traffic_monitor import traffic_monitor
 from anomaly_detector import detect_anomalies, save_anomaly
 from nvd_scanner import run_nvd_scan
 from passive_scanner import passive_scanner
+from epaper_display import init_display, get_display_stats
 import scan_state
 
 
@@ -158,8 +159,19 @@ def monitor_loop(interval=30):
     passive_scanner.start()
     threading.Thread(target=deep_scan_loop, daemon=True).start()
 
+    _display = init_display()
+
     try:
         while True:
+            #update display with scanning state before scan starts
+            if _display:
+                try:
+                    total, unknown, anomalies, cves = get_display_stats()
+                    subnet = next((s.get('subnet', '') for s in scan_state.get_all().values()), '')
+                    _display.update(_current_ssid, subnet, total, unknown, anomalies, cves, scanning=True)
+                except Exception as e:
+                    print(f'[Epaper] Update failed: {e}')
+
             results = scan_all_parallel(on_status=scan_state.update)
 
             #detect SSID change and switch database accordingly
@@ -205,6 +217,18 @@ def monitor_loop(interval=30):
                 for iface, r in sorted(results.items())
             )
             print(f"[{datetime.now().strftime('%H:%M:%S')}] Scan complete: {total} device(s) [{iface_summary}]. Waiting {interval}s...\n")
+
+            #update display with final results after scan
+            if _display:
+                try:
+                    total_d, unknown_d, anomalies_d, cves_d = get_display_stats()
+                    subnet = next((r.get('subnet', '') for r in results.values()), '')
+                    _display.update(_current_ssid, subnet, total_d, unknown_d, anomalies_d, cves_d, scanning=False)
+                except Exception as e:
+                    print(f'[Epaper] Update failed: {e}')
+
             time.sleep(interval)
     except KeyboardInterrupt:
+        if _display:
+            _display.sleep()
         print("\nMonitor stopped.")
