@@ -59,11 +59,6 @@ def init_database():
         )
     ''')
 
-    #label column migration for old DBs
-    cursor.execute("PRAGMA table_info(devices)")
-    if 'label' not in [row[1] for row in cursor.fetchall()]:
-        cursor.execute("ALTER TABLE devices ADD COLUMN label TEXT")
-
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS device_network (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -79,11 +74,6 @@ def init_database():
             UNIQUE(device_id, network_id)
         )
     ''')
-
-    #source column migration
-    cursor.execute("PRAGMA table_info(device_network)")
-    if 'source' not in [row[1] for row in cursor.fetchall()]:
-        cursor.execute("ALTER TABLE device_network ADD COLUMN source TEXT DEFAULT 'nmap'")
 
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS connection_logs (
@@ -153,36 +143,6 @@ def init_database():
             FOREIGN KEY (device_id) REFERENCES devices(id)
         )
     ''')
-
-    #normalise all MACs to lowercase
-    cursor.execute("UPDATE devices SET mac = LOWER(mac) WHERE mac IS NOT NULL AND mac != LOWER(mac)")
-
-    #merge duplicate MACs (race between passive + nmap, or case mismatch)
-    cursor.execute('''
-        SELECT mac FROM devices
-        WHERE mac IS NOT NULL GROUP BY mac HAVING COUNT(*) > 1
-    ''')
-    for (mac,) in cursor.fetchall():
-        cursor.execute('SELECT id, label FROM devices WHERE mac = ? ORDER BY first_seen ASC', (mac,))
-        rows = cursor.fetchall()
-        keep_id = rows[0][0]
-        for rid, label in rows:
-            if label:
-                keep_id = rid
-                break
-        dup_ids = [r[0] for r in rows if r[0] != keep_id]
-        for dup_id in dup_ids:
-            #delete conflicts first (UNIQUE constraint)
-            cursor.execute('''
-                DELETE FROM device_network WHERE device_id = ?
-                AND network_id IN (SELECT network_id FROM device_network WHERE device_id = ?)
-            ''', (dup_id, keep_id))
-            cursor.execute('UPDATE device_network  SET device_id = ? WHERE device_id = ?', (keep_id, dup_id))
-            cursor.execute('UPDATE traffic_stats   SET device_id = ? WHERE device_id = ?', (keep_id, dup_id))
-            cursor.execute('UPDATE connection_logs SET device_id = ? WHERE device_id = ?', (keep_id, dup_id))
-            cursor.execute('UPDATE open_ports      SET device_id = ? WHERE device_id = ?', (keep_id, dup_id))
-            cursor.execute('UPDATE cve_findings    SET device_id = ? WHERE device_id = ?', (keep_id, dup_id))
-            cursor.execute('DELETE FROM devices WHERE id = ?', (dup_id,))
 
     conn.commit()
     conn.close()
