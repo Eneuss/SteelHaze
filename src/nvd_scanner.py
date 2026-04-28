@@ -103,13 +103,24 @@ def run_nvd_scan(network_range=None):
                 if cve['severity'] in ('CRITICAL', 'HIGH'):
                     save_cve_anomaly(host, mac, cve['id'], cve['severity'], cve['description'])
 
-    #clean up old scan rows
-    conn = db()
-    cursor = conn.cursor()
-    cursor.execute("DELETE FROM cve_findings WHERE timestamp < ?", (scan_start,))
-    cursor.execute("DELETE FROM open_ports WHERE scan_time < ?", (scan_start,))
-    conn.commit()
-    conn.close()
+    #clean up old scan rows — only for hosts found in this run so that
+    #devices temporarily down during a scan keep their previous CVE history,
+    #and targeted single-host scans don't wipe records for other devices
+    scanned_hosts = list(nm.all_hosts())
+    if scanned_hosts:
+        placeholders = ','.join('?' * len(scanned_hosts))
+        conn = db()
+        cursor = conn.cursor()
+        cursor.execute(
+            f"DELETE FROM cve_findings WHERE ip IN ({placeholders}) AND timestamp < ?",
+            (*scanned_hosts, scan_start)
+        )
+        cursor.execute(
+            f"DELETE FROM open_ports WHERE ip IN ({placeholders}) AND scan_time < ?",
+            (*scanned_hosts, scan_start)
+        )
+        conn.commit()
+        conn.close()
 
     if found == 0:
         print("[SteelHaze] No devices with open ports found on the network.")
