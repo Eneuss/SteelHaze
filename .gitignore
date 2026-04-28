@@ -3,4 +3,4 @@ __pycache__/
 *.pyc
 *.pyo
 telegram.cfg
-steelhaze_old.db
+*.db
