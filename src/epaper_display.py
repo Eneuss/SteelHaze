@@ -4,6 +4,8 @@ If the display is not connected or the library is unavailable
 every call is silently skipped — the monitor continues normally.
 """
 import math
+import time
+import urllib.request
 from datetime import datetime
 
 try:
@@ -26,7 +28,9 @@ class EpaperDisplay:
         self._epd = epd2in13_V4.EPD()
         self._epd.init()
         self._epd.Clear(0xFF)
-        self._step = 0          # radar rotation state (0-7)
+        self._step          = 0     # radar rotation state (0-7)
+        self._ext_ip        = None
+        self._ext_ip_ts     = 0     # last fetch timestamp
         self._load_fonts()
         print('[Epaper] Display initialised (2.13" V4)')
 
@@ -39,6 +43,16 @@ class EpaperDisplay:
             f = ImageFont.load_default()
             self._lg = self._md = self._sm = f
 
+    def _refresh_ext_ip(self):
+        if time.time() - self._ext_ip_ts < 300:
+            return
+        try:
+            with urllib.request.urlopen('https://api.ipify.org', timeout=5) as r:
+                self._ext_ip = r.read().decode().strip()
+        except Exception:
+            self._ext_ip = None
+        self._ext_ip_ts = time.time()
+
     def _draw_radar(self, draw, cx, cy, r):
         """Draw a radar circle with a rotating sweep line."""
         draw.ellipse([(cx - r, cy - r), (cx + r, cy + r)], outline=255, width=1)
@@ -49,6 +63,8 @@ class EpaperDisplay:
         self._step = (self._step + 1) % 8
 
     def update(self, ssid, subnet, total, unknown, anomalies, cves, scanning):
+        self._refresh_ext_ip()
+
         img  = Image.new('1', (W, H), 255)
         draw = ImageDraw.Draw(img)
         now  = datetime.now().strftime('%H:%M')
@@ -75,7 +91,11 @@ class EpaperDisplay:
 
         # ── network ───────────────────────────────────────────────
         draw.text((6, 26), ssid or 'No SSID', font=self._md, fill=0)
-        draw.text((6, 40), subnet or '',       font=self._sm, fill=0)
+        draw.text((6, 40), subnet or '', font=self._sm, fill=0)
+        if self._ext_ip:
+            ext_text = f'ext: {self._ext_ip}'
+            bbox = draw.textbbox((0, 0), ext_text, font=self._sm)
+            draw.text((W - (bbox[2] - bbox[0]) - 6, 40), ext_text, font=self._sm, fill=0)
 
         # ── separator ─────────────────────────────────────────────
         draw.line([(0, 53), (W, 53)], fill=0)
