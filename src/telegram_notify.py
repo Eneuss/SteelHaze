@@ -1,14 +1,13 @@
 import configparser
 import logging
 import os
-import sqlite3
 import threading
 import time
 import urllib.parse
 import urllib.request
 from datetime import datetime, timedelta
 
-from database import DB_PATH
+from database import db
 
 log = logging.getLogger('telegram')
 
@@ -64,7 +63,7 @@ def notify(anomaly_type, ip, mac, details):
 
 def _summary_text():
     try:
-        conn = sqlite3.connect(DB_PATH, timeout=10)
+        conn = db()
         total = conn.execute('SELECT COUNT(*) FROM devices').fetchone()[0]
         unknown = conn.execute('''
             SELECT COUNT(DISTINCT d.id) FROM devices d

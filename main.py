@@ -8,7 +8,8 @@ import threading
 import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 
-from database import init_database
+from database import set_active_ssid
+from scanner import get_network_info
 
 
 def run_web():
@@ -22,7 +23,8 @@ def run_monitor(interval=30):
 
 
 def main():
-    init_database()
+    net = get_network_info()
+    set_active_ssid(net.get('ssid'))
 
     print("=== SteelHaze ===")
     print("Dashboard: http://localhost:5000\n")

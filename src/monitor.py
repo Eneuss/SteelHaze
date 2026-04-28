@@ -6,6 +6,7 @@ from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(__file__))
 from scanner import scan_all_parallel
+import database as _db_module
 from database import db, get_or_create_network
 from traffic_monitor import traffic_monitor
 from anomaly_detector import detect_anomalies, save_anomaly
@@ -144,7 +145,11 @@ def deep_scan_loop(interval=1800):
         time.sleep(interval)
 
 
+_current_ssid = None
+
+
 def monitor_loop(interval=30):
+    global _current_ssid
     print("=== SteelHaze Monitor Started ===")
     print(f"Network scan every {interval}s  |  Deep CVE scan every 30min  |  Dashboard: http://localhost:5000")
     print("Press Ctrl+C to stop\n")
@@ -156,6 +161,15 @@ def monitor_loop(interval=30):
     try:
         while True:
             results = scan_all_parallel(on_status=scan_state.update)
+
+            #detect SSID change and switch database accordingly
+            for result in results.values():
+                if result.get('network_info'):
+                    ssid = result['network_info'].get('ssid')
+                    if ssid != _current_ssid:
+                        _current_ssid = ssid
+                        _db_module.set_active_ssid(ssid)
+                break
 
             all_new_ips = []
             last_network_info = None

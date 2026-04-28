@@ -1,8 +1,25 @@
+import re
 import sqlite3
 import os
 from datetime import datetime
 
-DB_PATH = os.path.join(os.path.dirname(__file__), '..', 'steelhaze.db')
+_DB_DIR = os.path.normpath(os.path.join(os.path.dirname(__file__), '..'))
+DB_PATH  = os.path.join(_DB_DIR, 'steelhaze_wired.db')
+
+
+def _sanitize_ssid(ssid):
+    if not ssid:
+        return 'wired'
+    safe = re.sub(r'[^\w\-]', '_', ssid)
+    return safe[:50]
+
+
+def set_active_ssid(ssid):
+    global DB_PATH
+    name    = _sanitize_ssid(ssid)
+    DB_PATH = os.path.join(_DB_DIR, f'steelhaze_{name}.db')
+    print(f'[DB] Active database: steelhaze_{name}.db')
+    init_database()
 
 
 def db():
