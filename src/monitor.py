@@ -9,7 +9,6 @@ from scanner import scan_all_parallel
 from database import db, get_or_create_network
 from traffic_monitor import traffic_monitor
 from anomaly_detector import detect_anomalies, save_anomaly
-import telegram_notify
 from nvd_scanner import run_nvd_scan
 from passive_scanner import passive_scanner
 import scan_state
@@ -66,31 +65,6 @@ def save_devices(devices, network_info):
                 (datetime.now(), ip, dn_row["id"])
             )
         else:
-            #Check if this IP was previously held by a different MAC
-            if mac and mac != "N/A":
-                cursor.execute('''
-                    SELECT d.mac FROM device_network dn
-                    JOIN devices d ON dn.device_id = d.id
-                    WHERE dn.ip = ? AND dn.network_id = ? AND dn.device_id != ?
-                    AND d.mac IS NOT NULL
-                    ORDER BY dn.last_seen DESC LIMIT 1
-                ''', (ip, network_id, device_id))
-                prev = cursor.fetchone()
-                if prev and prev["mac"] != mac:
-                    cursor.execute('''
-                        SELECT COUNT(*) FROM anomalies
-                        WHERE type = 'IP_REASSIGNED' AND ip = ?
-                        AND timestamp > datetime('now', '-24 hours')
-                    ''', (ip,))
-                    if cursor.fetchone()[0] == 0:
-                        details = f"IP was held by {prev['mac']}, now seen with {mac}"
-                        cursor.execute('''
-                            INSERT INTO anomalies (type, ip, mac, details, timestamp)
-                            VALUES ('IP_REASSIGNED', ?, ?, ?, ?)
-                        ''', (ip, mac, details, datetime.now()))
-                        print(f"[{datetime.now().strftime('%H:%M:%S')}] IP reassigned: {ip}  {prev['mac']} -> {mac}")
-                        telegram_notify.notify('IP_REASSIGNED', ip, mac, details)
-
             cursor.execute(
                 "INSERT INTO device_network (device_id, network_id, ip, is_known, source) VALUES (?, ?, ?, 0, 'nmap')",
                 (device_id, network_id, ip)
