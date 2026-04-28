@@ -24,7 +24,7 @@ def run_monitor(interval=30):
 def main():
     init_database()
 
-    print("=== SteelHaze V2 ===")
+    print("=== SteelHaze ===")
     print("Dashboard: http://localhost:5000\n")
 
     web_thread = threading.Thread(target=run_web, daemon=True)

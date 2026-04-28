@@ -192,7 +192,7 @@ def deep_scan_loop(interval=1800):
 
 
 def monitor_loop(interval=30):
-    print("=== SteelHaze V2 Monitor Started ===")
+    print("=== SteelHaze Monitor Started ===")
     print(f"Network scan every {interval}s  |  Deep CVE scan every 30min  |  Dashboard: http://localhost:5000")
     print("Press Ctrl+C to stop\n")
 

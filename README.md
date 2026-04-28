@@ -1,4 +1,4 @@
-# SteelHaze V2
+# SteelHaze
 
 Network security monitor with a web dashboard, persistent storage, passive device detection, traffic monitoring, anomaly detection, and CVE lookups.
 

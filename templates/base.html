@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>SteelHaze V2 - {% block title %}{% endblock %}</title>
+  <title>SteelHaze - {% block title %}{% endblock %}</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
   {% block head %}{% endblock %}
 </head>
@@ -11,7 +11,7 @@
 
 <!-- header -->
 <header>
-  <h1>SteelHaze V2</h1>
+  <h1>SteelHaze</h1>
   <span class="subtitle">Network Security Monitor</span>
   <button id="theme-toggle" onclick="toggleTheme()"></button>
   <span id="refresh-timer">Refreshing in <b id="countdown">30</b>s</span>
