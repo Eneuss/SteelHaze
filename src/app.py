@@ -3,9 +3,8 @@ import os
 sys.path.insert(0, os.path.dirname(__file__))
 
 from flask import Flask, render_template, jsonify, request
-import sqlite3
 from datetime import datetime, timedelta
-from database import DB_PATH
+from database import db
 import scan_state
 
 app = Flask(
@@ -14,11 +13,6 @@ app = Flask(
     static_folder=os.path.join(os.path.dirname(__file__), '..', 'static'),
 )
 
-
-def db():
-    conn = sqlite3.connect(DB_PATH, timeout=30)
-    conn.row_factory = sqlite3.Row
-    return conn
 
 
 @app.route('/')

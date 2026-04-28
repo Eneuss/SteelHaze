@@ -3,18 +3,11 @@ Deep CVE scan: detects open ports + service versions on all hosts,
 queries the NVD API, and saves findings to the database.
 """
 import nmap
-import sqlite3
 from datetime import datetime
 from scanner import get_local_network, get_local_ip, get_local_ips
 from nvd_lookup import lookup_cve
-from database import DB_PATH
+from database import db
 from anomaly_detector import save_cve_anomaly
-
-
-def _db():
-    conn = sqlite3.connect(DB_PATH, timeout=30)
-    conn.execute("PRAGMA journal_mode=WAL")
-    return conn
 
 
 def run_nvd_scan(network_range=None):
@@ -62,7 +55,7 @@ def run_nvd_scan(network_range=None):
         print(f"{'='*60}")
 
         #one conn per host so monitor can write in between
-        conn = _db()
+        conn = db()
         cursor = conn.cursor()
 
         cursor.execute(
@@ -70,8 +63,10 @@ def run_nvd_scan(network_range=None):
             (host,)
         )
         row = cursor.fetchone()
-        device_id = row[0] if row else None
+        device_id = row["device_id"] if row else None
 
+        #cache CVE results per port — avoid calling the NVD API twice per port
+        port_cves = {}
         for port, data in tcp_ports.items():
             service = data.get("name", "unknown")
             product = data.get("product", "")
@@ -86,6 +81,7 @@ def run_nvd_scan(network_range=None):
             )
 
             cves = lookup_cve(port, service=service, product=product)
+            port_cves[port] = cves
             if not cves:
                 print("  No CVE results found for this port.")
             for cve in cves:
@@ -101,17 +97,14 @@ def run_nvd_scan(network_range=None):
         conn.commit()
         conn.close()
 
-        #save anomalies after conn is closed
-        for port, data in tcp_ports.items():
-            service = data.get("name", "unknown")
-            product = data.get("product", "")
-            cves = lookup_cve(port, service=service, product=product)
+        #save anomalies using cached CVE results
+        for port, cves in port_cves.items():
             for cve in cves:
                 if cve['severity'] in ('CRITICAL', 'HIGH'):
                     save_cve_anomaly(host, mac, cve['id'], cve['severity'], cve['description'])
 
     #clean up old scan rows
-    conn = _db()
+    conn = db()
     cursor = conn.cursor()
     cursor.execute("DELETE FROM cve_findings WHERE timestamp < ?", (scan_start,))
     cursor.execute("DELETE FROM open_ports WHERE scan_time < ?", (scan_start,))

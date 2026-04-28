@@ -1,11 +1,10 @@
-import sqlite3
 from datetime import datetime
-from database import DB_PATH
+from database import db
 import telegram_notify
 
 
 def detect_anomalies():
-    conn = sqlite3.connect(DB_PATH, timeout=30)
+    conn = db()
     cursor = conn.cursor()
     anomalies = []
 
@@ -26,14 +25,14 @@ def detect_anomalies():
             SELECT COUNT(*) FROM anomalies
             WHERE type = 'HIGH_TRAFFIC' AND ip = ?
             AND timestamp > datetime('now', '-1 hours')
-        ''', (row[0],))
+        ''', (row["ip"],))
         if cursor.fetchone()[0] == 0:
             anomalies.append({
                 "type": "HIGH_TRAFFIC",
-                "ip": row[0],
-                "mac": row[1],
-                "details": f"High traffic: {row[2] / 1024 / 1024:.2f} MB in 5 minutes",
-                "timestamp": row[3],
+                "ip": row["ip"],
+                "mac": row["mac"],
+                "details": f"High traffic: {row['total_bytes'] / 1024 / 1024:.2f} MB in 5 minutes",
+                "timestamp": row["last_seen"],
             })
 
     #2. new unknown devices (first seen <10 min ago)
@@ -48,14 +47,14 @@ def detect_anomalies():
             SELECT COUNT(*) FROM anomalies
             WHERE type = 'NEW_DEVICE' AND mac = ?
             AND timestamp > datetime('now', '-24 hours')
-        ''', (row[1],))
+        ''', (row["mac"],))
         if cursor.fetchone()[0] == 0:
             anomalies.append({
                 "type": "NEW_DEVICE",
-                "ip": row[0],
-                "mac": row[1],
+                "ip": row["ip"],
+                "mac": row["mac"],
                 "details": "New unrecognised device detected",
-                "timestamp": row[2],
+                "timestamp": row["first_seen"],
             })
 
     #3. Stealth devices: passive-only, >5 min old, not already alerted in 24h
@@ -71,14 +70,14 @@ def detect_anomalies():
             SELECT COUNT(*) FROM anomalies
             WHERE type = 'STEALTH_DEVICE' AND mac = ?
             AND timestamp > datetime('now', '-24 hours')
-        ''', (row[1],))
+        ''', (row["mac"],))
         if cursor.fetchone()[0] == 0:
             anomalies.append({
                 "type": "STEALTH_DEVICE",
-                "ip": row[0],
-                "mac": row[1],
+                "ip": row["ip"],
+                "mac": row["mac"],
                 "details": "Device detected passively - does not respond to network scan",
-                "timestamp": row[2],
+                "timestamp": row["first_seen"],
             })
 
     conn.close()
@@ -86,9 +85,8 @@ def detect_anomalies():
 
 
 def save_anomaly(anomaly):
-    conn = sqlite3.connect(DB_PATH, timeout=30)
-    cursor = conn.cursor()
-    cursor.execute('''
+    conn = db()
+    conn.execute('''
         INSERT INTO anomalies (type, ip, mac, details, timestamp)
         VALUES (?, ?, ?, ?, ?)
     ''', (
@@ -105,18 +103,17 @@ def save_anomaly(anomaly):
 
 
 def save_cve_anomaly(ip, mac, cve_id, severity, description):
-    conn = sqlite3.connect(DB_PATH, timeout=30)
-    cursor = conn.cursor()
+    conn = db()
     #skip if same CVE already logged for this IP in the last 24h
-    cursor.execute('''
+    row = conn.execute('''
         SELECT COUNT(*) FROM anomalies
         WHERE type = 'CVE_FOUND' AND ip = ?
         AND details LIKE ?
         AND timestamp > datetime('now', '-24 hours')
-    ''', (ip, f"{cve_id}%"))
-    if cursor.fetchone()[0] == 0:
+    ''', (ip, f"{cve_id}%")).fetchone()
+    if row[0] == 0:
         details = f"{cve_id} ({severity}): {description[:120]}"
-        cursor.execute('''
+        conn.execute('''
             INSERT INTO anomalies (type, ip, mac, details, timestamp)
             VALUES (?, ?, ?, ?, ?)
         ''', ('CVE_FOUND', ip, mac or '', details, datetime.now()))

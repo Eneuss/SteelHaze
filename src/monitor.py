@@ -1,4 +1,3 @@
-import sqlite3
 import time
 import threading
 import sys
@@ -7,7 +6,7 @@ from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(__file__))
 from scanner import scan_all_parallel
-from database import DB_PATH
+from database import db, get_or_create_network
 from traffic_monitor import traffic_monitor
 from anomaly_detector import detect_anomalies, save_anomaly
 import telegram_notify
@@ -16,28 +15,8 @@ from passive_scanner import passive_scanner
 import scan_state
 
 
-def get_or_create_network(cursor, network_info):
-    cursor.execute(
-        "SELECT id FROM networks WHERE gateway_ip = ? AND subnet = ?",
-        (network_info["gateway_ip"], network_info["subnet"])
-    )
-    row = cursor.fetchone()
-    if row:
-        cursor.execute(
-            "UPDATE networks SET last_seen = ?, ssid = ?, interface = ? WHERE id = ?",
-            (datetime.now(), network_info["ssid"], network_info["interface"], row[0])
-        )
-        return row[0]
-    else:
-        cursor.execute(
-            "INSERT INTO networks (ssid, gateway_ip, subnet, interface) VALUES (?, ?, ?, ?)",
-            (network_info["ssid"], network_info["gateway_ip"], network_info["subnet"], network_info["interface"])
-        )
-        return cursor.lastrowid
-
-
 def save_devices(devices, network_info):
-    conn = sqlite3.connect(DB_PATH, timeout=30)
+    conn = db()
     cursor = conn.cursor()
     new_ips = []
 
@@ -51,7 +30,7 @@ def save_devices(devices, network_info):
             cursor.execute("SELECT id FROM devices WHERE mac = ?", (mac,))
             row = cursor.fetchone()
             if row:
-                device_id = row[0]
+                device_id = row["id"]
                 cursor.execute(
                     "UPDATE devices SET last_seen = ? WHERE id = ?",
                     (datetime.now(), device_id)
@@ -67,7 +46,7 @@ def save_devices(devices, network_info):
             )
             row = cursor.fetchone()
             if row:
-                device_id = row[0]
+                device_id = row["device_id"]
                 cursor.execute(
                     "UPDATE devices SET last_seen = ? WHERE id = ?",
                     (datetime.now(), device_id)
@@ -84,7 +63,7 @@ def save_devices(devices, network_info):
         if dn_row:
             cursor.execute(
                 "UPDATE device_network SET last_seen = ?, ip = ?, source = 'nmap' WHERE id = ?",
-                (datetime.now(), ip, dn_row[0])
+                (datetime.now(), ip, dn_row["id"])
             )
         else:
             #Check if this IP was previously held by a different MAC
@@ -97,19 +76,19 @@ def save_devices(devices, network_info):
                     ORDER BY dn.last_seen DESC LIMIT 1
                 ''', (ip, network_id, device_id))
                 prev = cursor.fetchone()
-                if prev and prev[0] != mac:
+                if prev and prev["mac"] != mac:
                     cursor.execute('''
                         SELECT COUNT(*) FROM anomalies
                         WHERE type = 'IP_REASSIGNED' AND ip = ?
                         AND timestamp > datetime('now', '-24 hours')
                     ''', (ip,))
                     if cursor.fetchone()[0] == 0:
-                        details = f"IP was held by {prev[0]}, now seen with {mac}"
+                        details = f"IP was held by {prev['mac']}, now seen with {mac}"
                         cursor.execute('''
                             INSERT INTO anomalies (type, ip, mac, details, timestamp)
                             VALUES ('IP_REASSIGNED', ?, ?, ?, ?)
                         ''', (ip, mac, details, datetime.now()))
-                        print(f"[{datetime.now().strftime('%H:%M:%S')}] IP reassigned: {ip}  {prev[0]} -> {mac}")
+                        print(f"[{datetime.now().strftime('%H:%M:%S')}] IP reassigned: {ip}  {prev['mac']} -> {mac}")
                         telegram_notify.notify('IP_REASSIGNED', ip, mac, details)
 
             cursor.execute(
@@ -135,7 +114,7 @@ def downgrade_to_passive(network_id, active_ips):
     if not passive_ips:
         return
 
-    conn = sqlite3.connect(DB_PATH, timeout=30)
+    conn = db()
     cursor = conn.cursor()
 
     cursor.execute('''
@@ -145,10 +124,10 @@ def downgrade_to_passive(network_id, active_ips):
         AND dn.last_seen < datetime('now', '-5 minutes')
     ''', (network_id,))
 
-    for dn_id, ip in cursor.fetchall():
-        if ip not in active_ips and ip in passive_ips:
-            cursor.execute("UPDATE device_network SET source = 'passive' WHERE id = ?", (dn_id,))
-            print(f"[{datetime.now().strftime('%H:%M:%S')}] Downgraded nmap -> passive: {ip}")
+    for row in cursor.fetchall():
+        if row["ip"] not in active_ips and row["ip"] in passive_ips:
+            cursor.execute("UPDATE device_network SET source = 'passive' WHERE id = ?", (row["id"],))
+            print(f"[{datetime.now().strftime('%H:%M:%S')}] Downgraded nmap -> passive: {row['ip']}")
 
     conn.commit()
     conn.close()
@@ -159,7 +138,7 @@ def save_traffic_stats():
     if not stats:
         return
 
-    conn = sqlite3.connect(DB_PATH, timeout=30)
+    conn = db()
     cursor = conn.cursor()
 
     for ip, data in stats.items():
@@ -173,7 +152,7 @@ def save_traffic_stats():
                 '''INSERT INTO traffic_stats
                    (device_id, network_id, ip, bytes_sent, bytes_received, packets, timestamp)
                    VALUES (?, ?, ?, ?, ?, ?, ?)''',
-                (row[0], row[1], ip, data["bytes_sent"], data["bytes_received"],
+                (row["device_id"], row["network_id"], ip, data["bytes_sent"], data["bytes_received"],
                  data["packets"], datetime.now()),
             )
 

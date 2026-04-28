@@ -1,6 +1,5 @@
 import threading
 import subprocess
-import sqlite3
 import time
 from datetime import datetime
 
@@ -11,7 +10,7 @@ except ImportError:
     SCAPY_AVAILABLE = False
 
 from scanner import get_network_info, get_local_ips
-from database import DB_PATH
+from database import db
 
 
 class PassiveScanner:
@@ -102,7 +101,7 @@ class PassiveScanner:
         if not seen:
             return []
 
-        conn   = sqlite3.connect(DB_PATH, timeout=30)
+        conn   = db()
         cursor = conn.cursor()
 
         cursor.execute(
@@ -113,7 +112,7 @@ class PassiveScanner:
         if not row:
             conn.close()
             return []
-        network_id = row[0]
+        network_id = row["id"]
 
         new_ips = []
         for mac, data in seen.items():
@@ -126,7 +125,7 @@ class PassiveScanner:
             cursor.execute("SELECT id FROM devices WHERE mac = ?", (mac,))
             row = cursor.fetchone()
             if row:
-                device_id = row[0]
+                device_id = row["id"]
                 cursor.execute("UPDATE devices SET last_seen = ? WHERE id = ?", (now, device_id))
             else:
                 cursor.execute("INSERT INTO devices (mac) VALUES (?)", (mac,))
@@ -141,7 +140,7 @@ class PassiveScanner:
                 #Only update timestamp/ip; don't downgrade nmap -> passive
                 cursor.execute(
                     "UPDATE device_network SET last_seen = ?, ip = ? WHERE id = ?",
-                    (now, ip, dn[0])
+                    (now, ip, dn["id"])
                 )
             else:
                 cursor.execute(

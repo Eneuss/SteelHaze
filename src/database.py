@@ -1,7 +1,34 @@
 import sqlite3
 import os
+from datetime import datetime
 
 DB_PATH = os.path.join(os.path.dirname(__file__), '..', 'steelhaze.db')
+
+
+def db():
+    conn = sqlite3.connect(DB_PATH, timeout=30)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def get_or_create_network(cursor, network_info):
+    cursor.execute(
+        "SELECT id FROM networks WHERE gateway_ip = ? AND subnet = ?",
+        (network_info["gateway_ip"], network_info["subnet"])
+    )
+    row = cursor.fetchone()
+    if row:
+        cursor.execute(
+            "UPDATE networks SET last_seen = ?, ssid = ?, interface = ? WHERE id = ?",
+            (datetime.now(), network_info["ssid"], network_info["interface"], row["id"])
+        )
+        return row["id"]
+    else:
+        cursor.execute(
+            "INSERT INTO networks (ssid, gateway_ip, subnet, interface) VALUES (?, ?, ?, ?)",
+            (network_info["ssid"], network_info["gateway_ip"], network_info["subnet"], network_info["interface"])
+        )
+        return cursor.lastrowid
 
 
 def init_database():
