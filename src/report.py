@@ -1,16 +1,11 @@
 import io
-import sqlite3
 from datetime import datetime, timedelta
 
-from database import DB_PATH
+from database import db
 
 
 def _safe(text):
     return str(text or '-').replace('—', '-').replace('–', '-')
-
-
-def _db():
-    return sqlite3.connect(DB_PATH, timeout=10)
 
 
 def _stats(conn):
@@ -53,10 +48,12 @@ def _devices(conn):
 
 def _anomalies(conn):
     return conn.execute('''
-        SELECT timestamp, type, ip, mac, details
+        SELECT MAX(timestamp) AS timestamp, type, ip, mac,
+               COUNT(*) AS cnt, details
         FROM anomalies
         WHERE timestamp > datetime('now', '-24 hours')
-        ORDER BY timestamp DESC
+        GROUP BY type, ip
+        ORDER BY MAX(timestamp) DESC
     ''').fetchall()
 
 
@@ -213,7 +210,7 @@ def generate():
     except ImportError:
         raise RuntimeError('fpdf2 is not installed — run: pip install fpdf2')
 
-    conn = _db()
+    conn = db()
     stats    = _stats(conn)
     devices  = _devices(conn)
     anomalies = _anomalies(conn)
@@ -263,7 +260,8 @@ def generate():
     _draw_table(pdf,
         headers=['IP', 'MAC', 'Label', 'Source', 'Last Seen'],
         widths  =[35,   42,    33,       22,        48],
-        rows=[(r[0], r[1], r[2], r[3], r[4][:16] if r[4] else '') for r in devices],
+        rows=[(r['ip'], r['mac'], r['label'], r['source'],
+               r['last_seen'][:16] if r['last_seen'] else '') for r in devices],
     )
 
 
@@ -271,7 +269,12 @@ def generate():
     _draw_table(pdf,
         headers=['Time', 'Type', 'IP', 'Details'],
         widths  =[32,     30,    32,    86],
-        rows=[(r[0][:16] if r[0] else '', r[1], r[2], r[4]) for r in anomalies],
+        rows=[(
+            r['timestamp'][:16] if r['timestamp'] else '',
+            r['type'],
+            r['ip'],
+            f"x{r['cnt']}  {r['details']}" if r['cnt'] > 1 else (r['details'] or ''),
+        ) for r in anomalies],
     )
 
 
