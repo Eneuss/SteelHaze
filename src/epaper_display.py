@@ -122,8 +122,9 @@ class EpaperDisplay:
 
         self._epd.display(self._epd.getbuffer(img))
 
-    def sleep(self):
+    def clear_and_sleep(self):
         try:
+            self._epd.Clear(0xFF)
             self._epd.sleep()
         except Exception:
             pass

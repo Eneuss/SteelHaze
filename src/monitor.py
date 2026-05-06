@@ -230,5 +230,5 @@ def monitor_loop(interval=30):
             time.sleep(interval)
     except KeyboardInterrupt:
         if _display:
-            _display.sleep()
+            _display.clear_and_sleep()
         print("\nMonitor stopped.")
