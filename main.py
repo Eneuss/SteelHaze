@@ -3,6 +3,8 @@ SteelHaze starting point.
 Starts both the network monitor loop and the Flask web dashboard in parallel.
 """
 import os
+import socket
+import time
 import threading
 
 import sys
@@ -10,6 +12,21 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 
 from database import set_active_ssid
 from scanner import get_network_info
+
+
+def wait_for_network(timeout=60):
+    print("[SteelHaze] Waiting for network...")
+    start = time.time()
+    while time.time() - start < timeout:
+        try:
+            socket.setdefaulttimeout(3)
+            socket.socket(socket.AF_INET, socket.SOCK_STREAM).connect(("8.8.8.8", 53))
+            print("[SteelHaze] Network is up!")
+            return True
+        except OSError:
+            time.sleep(5)
+    print("[SteelHaze] Network timeout, continuing anyway...")
+    return False
 
 
 def run_web():
@@ -23,6 +40,7 @@ def run_monitor(interval=30):
 
 
 def main():
+    wait_for_network()
     net = get_network_info()
     set_active_ssid(net.get('ssid'))
 
