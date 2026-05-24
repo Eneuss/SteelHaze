@@ -4,11 +4,11 @@
 {% block content %}
 <!-- traffic table -->
 <div class="card">
-  <div class="card-header">Bandwidth usage — last 24 hours</div>
-  <table>
+  <div class="card-header" id="traffic-heading">Bandwidth usage — last 24 hours</div>
+  <table aria-labelledby="traffic-heading" aria-live="polite">
     <thead>
       <tr>
-        <th>IP</th><th>MAC</th><th>Sent</th><th>Received</th><th>Total</th><th>Packets</th>
+        <th scope="col">IP</th><th scope="col">MAC</th><th scope="col">Sent</th><th scope="col">Received</th><th scope="col">Total</th><th scope="col">Packets</th>
       </tr>
     </thead>
     <tbody id="traffic-body">

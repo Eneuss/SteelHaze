@@ -3,7 +3,7 @@
 
 {% block content %}
 <!-- anomalies -->
-<div id="anomalies-container">
+<div id="anomalies-container" aria-live="polite" aria-label="Anomaly events">
   <div class="empty">Loading...</div>
 </div>
 {% endblock %}
@@ -23,6 +23,7 @@ function toggleAnomalies(btn, key) {
   const extra = document.getElementById('extra-' + key);
   const expanded = extra.style.display !== 'none';
   extra.style.display = expanded ? 'none' : 'block';
+  btn.setAttribute('aria-expanded', expanded ? 'false' : 'true');
   btn.textContent = expanded ? btn.dataset.more : 'Show less';
 }
 
@@ -45,9 +46,9 @@ async function loadPage() {
 
   function rowHtml(a) {
     const cls = ANOMALY_BADGE[a.type] || 'badge-grey';
-    return `<div class="anomaly-row">
+    return `<div class="anomaly-row" role="listitem">
       <span class="badge ${cls}">${a.type}</span>
-      <span class="anomaly-time">${fmtShort(a.timestamp)}</span>
+      <span class="anomaly-time"><time>${fmtShort(a.timestamp)}</time></span>
       <span class="anomaly-details">${a.details}</span>
     </div>`;
   }
@@ -58,15 +59,16 @@ async function loadPage() {
     const preview = device.items.slice(0, PREVIEW);
     const extra   = device.items.slice(PREVIEW);
     const remaining = extra.length;
+    const hostLabel = device.label || device.ip || device.mac || 'Unknown host';
 
     const headerBadge = `<span class="badge badge-red" style="margin-left:auto">${total} event${total > 1 ? 's' : ''}</span>`;
 
     const extraHtml = remaining > 0
-      ? `<div id="extra-${key}" style="display:none">${extra.map(rowHtml).join('')}</div>
-         <button class="btn anomaly-expand" data-more="Show ${remaining} more" onclick="toggleAnomalies(this,'${key}')">Show ${remaining} more</button>`
+      ? `<div id="extra-${key}" style="display:none" role="list">${extra.map(rowHtml).join('')}</div>
+         <button class="btn anomaly-expand" aria-expanded="false" aria-controls="extra-${key}" data-more="Show ${remaining} more" onclick="toggleAnomalies(this,'${key}')">Show ${remaining} more</button>`
       : '';
 
-    return `<div class="host-block">
+    return `<div class="host-block" role="region" aria-label="Anomalies for ${hostLabel}">
       <div class="host-header">
         <span class="host-ip">${device.ip || '—'}</span>
         <span class="host-name">${device.label
@@ -74,7 +76,7 @@ async function loadPage() {
           : `<code>${device.mac || '—'}</code>`}</span>
         ${headerBadge}
       </div>
-      <div class="host-body">
+      <div class="host-body" role="list">
         ${preview.map(rowHtml).join('')}
         ${extraHtml}
       </div>

@@ -9,24 +9,24 @@
 <!-- row 1: devices/day + CVE severity -->
 <div class="charts-row charts-row-main">
   <div class="card">
-    <div class="card-header">Unique devices per day — last 7 days</div>
-    <div class="chart-wrap-lg"><canvas id="chart-devices"></canvas></div>
+    <div class="card-header" id="hdr-devices">Unique devices per day — last 7 days</div>
+    <div class="chart-wrap-lg"><canvas id="chart-devices" role="img" aria-labelledby="hdr-devices"></canvas></div>
   </div>
   <div class="card">
-    <div class="card-header">CVE severity breakdown</div>
-    <div class="chart-wrap-lg"><canvas id="chart-cve"></canvas></div>
+    <div class="card-header" id="hdr-cve">CVE severity breakdown</div>
+    <div class="chart-wrap-lg"><canvas id="chart-cve" role="img" aria-labelledby="hdr-cve"></canvas></div>
   </div>
 </div>
 
 <!-- row 2: top traffic + anomalies/day -->
 <div class="charts-row charts-row-half">
   <div class="card">
-    <div class="card-header">Top devices by traffic — last 24h</div>
-    <div class="chart-wrap-lg"><canvas id="chart-traffic"></canvas></div>
+    <div class="card-header" id="hdr-traffic">Top devices by traffic — last 24h</div>
+    <div class="chart-wrap-lg"><canvas id="chart-traffic" role="img" aria-labelledby="hdr-traffic"></canvas></div>
   </div>
   <div class="card">
-    <div class="card-header">Anomalies per day — last 7 days</div>
-    <div class="chart-wrap-lg"><canvas id="chart-anomalies"></canvas></div>
+    <div class="card-header" id="hdr-anomalies">Anomalies per day — last 7 days</div>
+    <div class="chart-wrap-lg"><canvas id="chart-anomalies" role="img" aria-labelledby="hdr-anomalies"></canvas></div>
   </div>
 </div>
 {% endblock %}

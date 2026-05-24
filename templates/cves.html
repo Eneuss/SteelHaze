@@ -3,7 +3,7 @@
 
 {% block content %}
 <!-- cve findings -->
-<div id="cves-container">
+<div id="cves-container" aria-live="polite" aria-label="CVE findings">
   <div class="empty">Loading...</div>
 </div>
 {% endblock %}
@@ -20,8 +20,10 @@ async function loadPage() {
   }
 
   container.innerHTML = data.map(host => {
+    const hostLabel = host.label || host.ip;
+
     const vulnHtml = host.vulnerable_ports.map(p => `
-      <div class="port-block">
+      <div class="port-block" role="region" aria-label="Port ${p.port} — ${p.service}">
         <div class="port-header has-cves">
           <span class="port-num">${p.port}/tcp</span>
           <span class="port-service">${p.service}</span>
@@ -29,7 +31,7 @@ async function loadPage() {
         </div>
         ${p.cves.map(c => `
         <div class="cve-row">
-          <div class="cve-id"><a href="https://nvd.nist.gov/vuln/detail/${c.cve_id}" target="_blank">${c.cve_id}</a></div>
+          <div class="cve-id"><a href="https://nvd.nist.gov/vuln/detail/${c.cve_id}" target="_blank" rel="noopener noreferrer" aria-label="${c.cve_id} (opens in new tab)">${c.cve_id}</a></div>
           <div><span class="sev-${c.severity}">${c.severity}</span></div>
           <div class="cve-desc">${c.description}</div>
         </div>`).join('')}
@@ -37,8 +39,10 @@ async function loadPage() {
 
     const cleanHtml = host.clean_ports.length ? `
       <div class="clean-ports-section">
-        <div class="clean-ports-label">Other open ports (no CVEs)</div>
-        ${host.clean_ports.map(p => `<span class="clean-port-tag">${p.port}/tcp ${p.service}</span>`).join('')}
+        <div class="clean-ports-label" id="clean-${host.ip.replace(/\./g,'-')}">Other open ports (no CVEs)</div>
+        <div aria-labelledby="clean-${host.ip.replace(/\./g,'-')}">
+          ${host.clean_ports.map(p => `<span class="clean-port-tag">${p.port}/tcp ${p.service}</span>`).join('')}
+        </div>
       </div>` : '';
 
     const badge = host.vulnerable_ports.length
@@ -49,7 +53,7 @@ async function loadPage() {
       ? `<span class="host-name"><span class="device-label">${host.label}</span><span class="mac-sub">${host.mac || ''}</span></span>`
       : host.mac ? `<span class="host-name"><code>${host.mac}</code></span>` : '';
 
-    return `<div class="host-block">
+    return `<div class="host-block" role="region" aria-label="CVE findings for ${hostLabel}">
       <div class="host-header">
         <span class="host-ip">${host.ip}</span>
         ${hostIdent}

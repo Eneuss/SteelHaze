@@ -3,7 +3,7 @@
 
 {% block content %}
 <!-- per-interface device sections -->
-<div id="interfaces-container">
+<div id="interfaces-container" aria-live="polite" aria-label="Network interfaces">
   <div class="empty">Loading...</div>
 </div>
 {% endblock %}
@@ -41,7 +41,7 @@ const STATUS_BADGE = {
 function showMarkKnown(mac) {
   const s = sid(mac);
   document.getElementById('ac-' + s).innerHTML =
-    `<input type="text" id="li-${s}" class="label-input" placeholder="Label (optional)" />
+    `<input type="text" id="li-${s}" class="label-input" placeholder="Label (optional)" aria-label="Device label (optional)" />
      <button class="btn btn-confirm" onclick="confirmMarkKnown('${mac}')">Confirm</button>
      <button class="btn" onclick="loadPage()">Cancel</button>`;
   document.getElementById('li-' + s).focus();
@@ -61,7 +61,7 @@ async function confirmMarkKnown(mac) {
 function showEditLabel(mac, current) {
   const s = sid(mac);
   document.getElementById('lc-' + s).innerHTML =
-    `<input type="text" id="le-${s}" class="label-input" value="${current || ''}" placeholder="Label" />
+    `<input type="text" id="le-${s}" class="label-input" value="${current || ''}" placeholder="Label" aria-label="Device label" />
      <button class="btn btn-confirm" onclick="saveLabel('${mac}')">Save</button>
      <button class="btn" onclick="loadPage()">Cancel</button>`;
   document.getElementById('le-' + s).focus();
@@ -80,7 +80,8 @@ async function saveLabel(mac) {
 function deviceRow(d) {
   const now = Date.now();
   const active = (now - parseUTC(d.last_seen).getTime()) < 300000;
-  const dot = `<span class="status-dot ${active ? 'dot-active' : 'dot-offline'}"></span>`;
+  const statusLabel = active ? 'Active' : 'Offline';
+  const dot = `<span class="status-dot ${active ? 'dot-active' : 'dot-offline'}" aria-hidden="true"></span><span class="sr-only">${statusLabel}</span>`;
   const knownBadge = d.is_known
     ? '<span class="badge badge-green">Known</span>'
     : '<span class="badge badge-yellow">Unknown</span>';
@@ -90,12 +91,12 @@ function deviceRow(d) {
   const labelCell = d.label
     ? `<td id="lc-${s}">
          <span class="device-label">${d.label}</span>
-         ${d.is_known ? `<span class="edit-icon" onclick="showEditLabel('${d.mac}', '${d.label.replace(/'/g, "\\'")}')">✎</span>` : ''}
+         ${d.is_known ? `<button class="edit-icon" aria-label="Edit label for ${d.label}" onclick="showEditLabel('${d.mac}', '${d.label.replace(/'/g, "\\'")}')">✎</button>` : ''}
        </td>`
     : d.is_known
     ? `<td id="lc-${s}">
          <span class="no-label">—</span>
-         <span class="edit-icon" onclick="showEditLabel('${d.mac}', '')">✎</span>
+         <button class="edit-icon" aria-label="Add label for ${d.mac || d.ip}" onclick="showEditLabel('${d.mac}', '')">✎</button>
        </td>`
     : `<td id="lc-${s}"></td>`;
 
@@ -134,7 +135,7 @@ async function loadPage() {
     const info = data[iface];
     const badge = STATUS_BADGE[info.status] || STATUS_BADGE.idle;
     const errorNote = info.error
-      ? `<div class="iface-error">Error: ${info.error}</div>`
+      ? `<div class="iface-error" role="alert">Error: ${info.error}</div>`
       : '';
 
     const now = Date.now();
@@ -147,6 +148,7 @@ async function loadPage() {
 
     const passive = info.passive || [];
     const total = devices.length + passive.length;
+    const label = info.ssid || iface;
 
     let tableHtml;
     if (!devices.length && !passive.length) {
@@ -159,21 +161,21 @@ async function loadPage() {
           ...passive.map(deviceRow),
         ] : []),
       ].join('');
-      tableHtml = `<table>
+      tableHtml = `<table aria-label="Devices on ${label}">
            <thead><tr>
-             <th>IP</th><th>MAC</th><th>Label</th>
-             <th>First Seen</th><th>Last Seen</th><th>Status</th><th>Action</th>
+             <th scope="col">IP</th><th scope="col">MAC</th><th scope="col">Label</th>
+             <th scope="col">First Seen</th><th scope="col">Last Seen</th><th scope="col">Status</th><th scope="col">Action</th>
            </tr></thead>
            <tbody>${rows}</tbody>
          </table>`;
     }
 
-    return `<div class="card" style="margin-bottom:20px">
+    return `<div class="card" style="margin-bottom:20px" role="region" aria-label="${label}">
       <div class="card-header iface-header">
-        <span class="iface-name">${info.ssid || iface}</span>
+        <span class="iface-name">${label}</span>
         <span class="iface-subnet">${info.subnet || ''}</span>
         ${badge}
-        <span class="iface-count">${total} device${total !== 1 ? 's' : ''}</span>
+        <span class="iface-count" aria-label="${total} device${total !== 1 ? 's' : ''}">${total} device${total !== 1 ? 's' : ''}</span>
       </div>
       ${errorNote}
       ${tableHtml}

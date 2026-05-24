@@ -9,31 +9,33 @@
 </head>
 <body>
 
+<a href="#main-content" class="skip-link">Skip to main content</a>
+
 <!-- header -->
-<header>
+<header role="banner">
   <h1>SteelHaze</h1>
   <span class="subtitle">Network Security Monitor</span>
-  <button id="theme-toggle" onclick="toggleTheme()"></button>
-  <span id="refresh-timer">Refreshing in <b id="countdown">30</b>s</span>
+  <button id="theme-toggle" onclick="toggleTheme()" aria-label="Switch colour theme">Light</button>
+  <span id="refresh-timer" aria-hidden="true">Refreshing in <b id="countdown">30</b>s</span>
 </header>
 
 <!-- nav -->
-<nav>
-  <a href="{{ url_for('devices') }}"   class="{{ 'active' if active == 'devices' }}">Devices</a>
-  <a href="{{ url_for('traffic') }}"   class="{{ 'active' if active == 'traffic' }}">Traffic</a>
-  <a href="{{ url_for('anomalies') }}" class="{{ 'active' if active == 'anomalies' }}">Anomalies</a>
-  <a href="{{ url_for('cves') }}"      class="{{ 'active' if active == 'cves' }}">CVE Findings</a>
-  <a href="{{ url_for('timeline') }}"  class="{{ 'active' if active == 'timeline' }}">Charts</a>
+<nav aria-label="Main navigation">
+  <a href="{{ url_for('devices') }}"   class="{{ 'active' if active == 'devices' }}"   {% if active == 'devices' %}aria-current="page"{% endif %}>Devices</a>
+  <a href="{{ url_for('traffic') }}"   class="{{ 'active' if active == 'traffic' }}"   {% if active == 'traffic' %}aria-current="page"{% endif %}>Traffic</a>
+  <a href="{{ url_for('anomalies') }}" class="{{ 'active' if active == 'anomalies' }}" {% if active == 'anomalies' %}aria-current="page"{% endif %}>Anomalies</a>
+  <a href="{{ url_for('cves') }}"      class="{{ 'active' if active == 'cves' }}"      {% if active == 'cves' %}aria-current="page"{% endif %}>CVE Findings</a>
+  <a href="{{ url_for('timeline') }}"  class="{{ 'active' if active == 'timeline' }}"  {% if active == 'timeline' %}aria-current="page"{% endif %}>Charts</a>
 </nav>
 
-<main>
+<main id="main-content">
   <!-- stats bar -->
-  <div class="stats-grid">
-    <div class="stat-card blue">  <div class="label">Total Devices</div> <div class="value" id="stat-total">—</div></div>
-    <div class="stat-card green"> <div class="label">Active Now</div>    <div class="value" id="stat-active">—</div></div>
-    <div class="stat-card yellow"><div class="label">Unknown</div>       <div class="value" id="stat-unknown">—</div></div>
-    <div class="stat-card red">   <div class="label">Anomalies (24h)</div><div class="value" id="stat-anomalies">—</div></div>
-    <div class="stat-card purple"><div class="label">CVEs Found</div>    <div class="value" id="stat-cves">—</div></div>
+  <div class="stats-grid" role="region" aria-label="Network statistics">
+    <div class="stat-card blue">  <div class="label" id="lbl-total">Total Devices</div> <div class="value" id="stat-total" aria-labelledby="lbl-total" aria-live="polite">—</div></div>
+    <div class="stat-card green"> <div class="label" id="lbl-active">Active Now</div>    <div class="value" id="stat-active" aria-labelledby="lbl-active" aria-live="polite">—</div></div>
+    <div class="stat-card yellow"><div class="label" id="lbl-unknown">Unknown</div>      <div class="value" id="stat-unknown" aria-labelledby="lbl-unknown" aria-live="polite">—</div></div>
+    <div class="stat-card red">   <div class="label" id="lbl-anomalies">Anomalies (24h)</div><div class="value" id="stat-anomalies" aria-labelledby="lbl-anomalies" aria-live="polite">—</div></div>
+    <div class="stat-card purple"><div class="label" id="lbl-cves">CVEs Found</div>     <div class="value" id="stat-cves" aria-labelledby="lbl-cves" aria-live="polite">—</div></div>
   </div>
 
   <!-- page content goes here -->
