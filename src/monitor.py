@@ -34,7 +34,7 @@ def save_devices(devices, network_info):
                 device_id = row["id"]
                 cursor.execute(
                     "UPDATE devices SET last_seen = ? WHERE id = ?",
-                    (datetime.now(), device_id)
+                    (datetime.utcnow(), device_id)
                 )
             else:
                 cursor.execute("INSERT INTO devices (mac) VALUES (?)", (mac,))
@@ -50,7 +50,7 @@ def save_devices(devices, network_info):
                 device_id = row["device_id"]
                 cursor.execute(
                     "UPDATE devices SET last_seen = ? WHERE id = ?",
-                    (datetime.now(), device_id)
+                    (datetime.utcnow(), device_id)
                 )
             else:
                 cursor.execute("INSERT INTO devices (mac) VALUES (?)", (None,))
@@ -64,7 +64,7 @@ def save_devices(devices, network_info):
         if dn_row:
             cursor.execute(
                 "UPDATE device_network SET last_seen = ?, ip = ?, source = 'nmap' WHERE id = ?",
-                (datetime.now(), ip, dn_row["id"])
+                (datetime.utcnow(), ip, dn_row["id"])
             )
         else:
             cursor.execute(
@@ -129,7 +129,7 @@ def save_traffic_stats():
                    (device_id, network_id, ip, bytes_sent, bytes_received, packets, timestamp)
                    VALUES (?, ?, ?, ?, ?, ?, ?)''',
                 (row["device_id"], row["network_id"], ip, data["bytes_sent"], data["bytes_received"],
-                 data["packets"], datetime.now()),
+                 data["packets"], datetime.utcnow()),
             )
 
     conn.commit()

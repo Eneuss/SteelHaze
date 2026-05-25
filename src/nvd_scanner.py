@@ -36,7 +36,7 @@ def run_nvd_scan(network_range=None):
         print(f"[SteelHaze] CVE scan error: {e}")
         return
 
-    scan_start = datetime.now()
+    scan_start = datetime.utcnow()
     found = 0
 
     for host in nm.all_hosts():
@@ -80,7 +80,7 @@ def run_nvd_scan(network_range=None):
                 (device_id, host, port, label)
             )
 
-            cves = lookup_cve(port, service=service, product=product)
+            cves = lookup_cve(port, service=service, product=product, version=version)
             port_cves[port] = cves
             if not cves:
                 print("  No CVE results found for this port.")
@@ -92,7 +92,7 @@ def run_nvd_scan(network_range=None):
                         (device_id, ip, port, service, cve_id, severity, description, timestamp)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (device_id, host, port, label, cve["id"], cve["severity"],
-                      cve["description"], datetime.now()))
+                      cve["description"], datetime.utcnow()))
 
         conn.commit()
         conn.close()

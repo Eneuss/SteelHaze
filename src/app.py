@@ -47,7 +47,7 @@ def get_devices():
         WHERE dn.last_seen > ?
         AND dn.id = (SELECT id FROM device_network WHERE device_id = d.id ORDER BY last_seen DESC LIMIT 1)
         ORDER BY dn.last_seen DESC
-    ''', (datetime.now() - timedelta(hours=24),)).fetchall()
+    ''', (datetime.utcnow() - timedelta(hours=24),)).fetchall()
     conn.close()
     return jsonify([dict(r) for r in rows])
 
@@ -71,7 +71,7 @@ def get_stats():
         JOIN device_network dn ON d.id = dn.device_id
         WHERE d.last_seen > ?
         AND dn.network_id IN ({current_nets})
-    ''', (datetime.now() - timedelta(minutes=5),)).fetchone()[0]
+    ''', (datetime.utcnow() - timedelta(minutes=5),)).fetchone()[0]
     unknown = conn.execute(f'''
         SELECT COUNT(DISTINCT d.id) FROM devices d
         JOIN device_network dn ON d.id = dn.device_id

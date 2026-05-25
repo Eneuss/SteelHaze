@@ -37,7 +37,7 @@ def get_or_create_network(cursor, network_info):
     if row:
         cursor.execute(
             "UPDATE networks SET last_seen = ?, ssid = ?, interface = ? WHERE id = ?",
-            (datetime.now(), network_info["ssid"], network_info["interface"], row["id"])
+            (datetime.utcnow(), network_info["ssid"], network_info["interface"], row["id"])
         )
         return row["id"]
     else:

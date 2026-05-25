@@ -94,7 +94,7 @@ def save_anomaly(anomaly):
         anomaly["ip"],
         anomaly.get("mac", ""),
         anomaly["details"],
-        datetime.now(),
+        datetime.utcnow(),
     ))
     conn.commit()
     conn.close()
@@ -116,7 +116,7 @@ def save_cve_anomaly(ip, mac, cve_id, severity, description):
         conn.execute('''
             INSERT INTO anomalies (type, ip, mac, details, timestamp)
             VALUES (?, ?, ?, ?, ?)
-        ''', ('CVE_FOUND', ip, mac or '', details, datetime.now()))
+        ''', ('CVE_FOUND', ip, mac or '', details, datetime.utcnow()))
         conn.commit()
         conn.close()
         telegram_notify.notify('CVE_FOUND', ip, mac or '', details)

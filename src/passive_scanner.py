@@ -120,7 +120,7 @@ class PassiveScanner:
             if ip in local:
                 continue
 
-            now = datetime.now()
+            now = datetime.utcnow()
 
             cursor.execute("SELECT id FROM devices WHERE mac = ?", (mac,))
             row = cursor.fetchone()
