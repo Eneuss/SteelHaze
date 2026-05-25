@@ -87,12 +87,17 @@ def run_nvd_scan(network_range=None):
             for cve in cves:
                 print(f"  {cve['id']} | {cve['severity']}")
                 print(f"  {cve['description']}\n")
-                cursor.execute('''
-                    INSERT INTO cve_findings
-                        (device_id, ip, port, service, cve_id, severity, description, timestamp)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                ''', (device_id, host, port, label, cve["id"], cve["severity"],
-                      cve["description"], datetime.utcnow()))
+                cursor.execute(
+                    "SELECT 1 FROM cve_findings WHERE ip = ? AND port = ? AND cve_id = ?",
+                    (host, port, cve["id"])
+                )
+                if not cursor.fetchone():
+                    cursor.execute('''
+                        INSERT INTO cve_findings
+                            (device_id, ip, port, service, cve_id, severity, description, timestamp)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    ''', (device_id, host, port, label, cve["id"], cve["severity"],
+                          cve["description"], datetime.utcnow()))
 
         conn.commit()
         conn.close()
