@@ -54,7 +54,26 @@ def run_nvd_scan(network_range=None):
         print(f"  Ports : {list(tcp_ports.keys())}")
         print(f"{'='*60}")
 
-        #one conn per host so monitor can write in between
+        #do all NVD lookups first (no DB connection held during HTTP requests)
+        port_cves = {}
+        port_labels = {}
+        for port, data in tcp_ports.items():
+            service = data.get("name", "unknown")
+            product = data.get("product", "")
+            version = data.get("version", "")
+            label   = f"{service} {product} {version}".strip()
+            port_labels[port] = label
+            print(f"\n  [Port {port}/tcp]  {label}")
+            print(f"  --- CVE Lookup (NVD) ---")
+            cves = lookup_cve(port, service=service, product=product, version=version)
+            port_cves[port] = cves
+            if not cves:
+                print("  No CVE results found for this port.")
+            for cve in cves:
+                print(f"  {cve['id']} | {cve['severity']}")
+                print(f"  {cve['description']}\n")
+
+        #open DB only to write results — keep connection as short as possible
         conn = db()
         cursor = conn.cursor()
 
@@ -65,28 +84,13 @@ def run_nvd_scan(network_range=None):
         row = cursor.fetchone()
         device_id = row["device_id"] if row else None
 
-        #cache CVE results per port — avoid calling the NVD API twice per port
-        port_cves = {}
-        for port, data in tcp_ports.items():
-            service = data.get("name", "unknown")
-            product = data.get("product", "")
-            version = data.get("version", "")
-            label   = f"{service} {product} {version}".strip()
-            print(f"\n  [Port {port}/tcp]  {label}")
-            print(f"  --- CVE Lookup (NVD) ---")
-
+        for port, cves in port_cves.items():
+            label = port_labels[port]
             cursor.execute(
                 "INSERT INTO open_ports (device_id, ip, port, service) VALUES (?, ?, ?, ?)",
                 (device_id, host, port, label)
             )
-
-            cves = lookup_cve(port, service=service, product=product, version=version)
-            port_cves[port] = cves
-            if not cves:
-                print("  No CVE results found for this port.")
             for cve in cves:
-                print(f"  {cve['id']} | {cve['severity']}")
-                print(f"  {cve['description']}\n")
                 cursor.execute(
                     "SELECT 1 FROM cve_findings WHERE ip = ? AND port = ? AND cve_id = ?",
                     (host, port, cve["id"])
