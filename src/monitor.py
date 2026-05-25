@@ -163,69 +163,73 @@ def monitor_loop(interval=30):
 
     try:
         while True:
-            #update display with scanning state before scan starts
-            if _display:
-                try:
-                    total, unknown, anomalies, cves = get_display_stats()
-                    subnet = next((s.get('subnet', '') for s in scan_state.get_all().values()), '')
-                    _display.update(_current_ssid, subnet, total, unknown, anomalies, cves, scanning=True)
-                except Exception as e:
-                    print(f'[Epaper] Update failed: {e}')
+            try:
+                #update display with scanning state before scan starts
+                if _display:
+                    try:
+                        total, unknown, anomalies, cves = get_display_stats()
+                        subnet = next((s.get('subnet', '') for s in scan_state.get_all().values()), '')
+                        _display.update(_current_ssid, subnet, total, unknown, anomalies, cves, scanning=True)
+                    except Exception as e:
+                        print(f'[Epaper] Update failed: {e}')
 
-            results = scan_all_parallel(on_status=scan_state.update)
+                results = scan_all_parallel(on_status=scan_state.update)
 
-            #detect SSID change and switch database accordingly
-            for result in results.values():
-                if result.get('network_info'):
-                    ssid = result['network_info'].get('ssid')
-                    if ssid != _current_ssid:
-                        _current_ssid = ssid
-                        _db_module.set_active_ssid(ssid)
-                break
+                #detect SSID change and switch database accordingly
+                for result in results.values():
+                    if result.get('network_info'):
+                        ssid = result['network_info'].get('ssid')
+                        if ssid != _current_ssid:
+                            _current_ssid = ssid
+                            _db_module.set_active_ssid(ssid)
+                    break
 
-            all_new_ips = []
-            last_network_info = None
-            for iface, result in results.items():
-                if result["error"] or not result["devices"]:
-                    continue
-                new_ips, network_id = save_devices(result["devices"], result["network_info"])
-                active_ips = {d['ip'] for d in result['devices']}
-                downgrade_to_passive(network_id, active_ips)
-                all_new_ips.extend(new_ips)
-                last_network_info = result["network_info"]
+                all_new_ips = []
+                last_network_info = None
+                for iface, result in results.items():
+                    if result["error"] or not result["devices"]:
+                        continue
+                    new_ips, network_id = save_devices(result["devices"], result["network_info"])
+                    active_ips = {d['ip'] for d in result['devices']}
+                    downgrade_to_passive(network_id, active_ips)
+                    all_new_ips.extend(new_ips)
+                    last_network_info = result["network_info"]
 
-            if last_network_info:
-                passive_new = passive_scanner.save_new_to_db(last_network_info)
-                all_new_ips.extend(passive_new)
+                if last_network_info:
+                    passive_new = passive_scanner.save_new_to_db(last_network_info)
+                    all_new_ips.extend(passive_new)
 
-            save_traffic_stats()
+                save_traffic_stats()
 
-            for ip in all_new_ips:
-                print(f"[{datetime.now().strftime('%H:%M:%S')}] Triggering CVE scan for new device: {ip}")
-                threading.Thread(target=run_nvd_scan, args=(ip,), daemon=True).start()
+                for ip in all_new_ips:
+                    print(f"[{datetime.now().strftime('%H:%M:%S')}] Triggering CVE scan for new device: {ip}")
+                    threading.Thread(target=run_nvd_scan, args=(ip,), daemon=True).start()
 
-            anomalies = detect_anomalies()
-            if anomalies:
-                print(f"[{datetime.now().strftime('%H:%M:%S')}] {len(anomalies)} anomaly/anomalies detected:")
-                for a in anomalies:
-                    print(f"  [{a['type']}] {a['ip']}  {a['details']}")
-                    save_anomaly(a)
+                anomalies = detect_anomalies()
+                if anomalies:
+                    print(f"[{datetime.now().strftime('%H:%M:%S')}] {len(anomalies)} anomaly/anomalies detected:")
+                    for a in anomalies:
+                        print(f"  [{a['type']}] {a['ip']}  {a['details']}")
+                        save_anomaly(a)
 
-            total = sum(len(r["devices"]) for r in results.values() if not r["error"])
-            iface_summary = ", ".join(
-                f"{iface}({'ok' if not r['error'] else 'err'})"
-                for iface, r in sorted(results.items())
-            )
-            print(f"[{datetime.now().strftime('%H:%M:%S')}] Scan complete: {total} device(s) [{iface_summary}]. Waiting {interval}s...\n")
+                total = sum(len(r["devices"]) for r in results.values() if not r["error"])
+                iface_summary = ", ".join(
+                    f"{iface}({'ok' if not r['error'] else 'err'})"
+                    for iface, r in sorted(results.items())
+                )
+                print(f"[{datetime.now().strftime('%H:%M:%S')}] Scan complete: {total} device(s) [{iface_summary}]. Waiting {interval}s...\n")
 
-            #update display with final results after scan
-            if _display:
-                try:
-                    total_d, unknown_d, anomalies_d, cves_d = get_display_stats()
-                    subnet = next((r.get('subnet', '') for r in results.values()), '')
-                    _display.update(_current_ssid, subnet, total_d, unknown_d, anomalies_d, cves_d, scanning=False)
-                except Exception as e:
-                    print(f'[Epaper] Update failed: {e}')
+                #update display with final results after scan
+                if _display:
+                    try:
+                        total_d, unknown_d, anomalies_d, cves_d = get_display_stats()
+                        subnet = next((r.get('subnet', '') for r in results.values()), '')
+                        _display.update(_current_ssid, subnet, total_d, unknown_d, anomalies_d, cves_d, scanning=False)
+                    except Exception as e:
+                        print(f'[Epaper] Update failed: {e}')
+
+            except Exception as e:
+                print(f"[{datetime.now().strftime('%H:%M:%S')}] Monitor cycle error: {e}")
 
             time.sleep(interval)
     except KeyboardInterrupt:
