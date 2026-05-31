@@ -21,7 +21,7 @@ One command starts both the monitor loop and the dashboard on port 5000.
 sudo apt update && sudo apt install -y nmap
  
 # 2. Get the code
-git clone <your-repo-url> SteelHaze
+git clone https://github.com/Eneuss/SteelHaze.git SteelHaze
 cd SteelHaze
  
 # 3. Install Python dependencies
