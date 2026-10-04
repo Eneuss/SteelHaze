@@ -249,3 +249,9 @@ SteelHaze/
 ```
 
 At runtime the program creates per-network databases (`steelhaze_<ssid>.db`) in the project root. These files and `telegram.cfg` are gitignored.
+
+---
+
+## License
+
+Released under the MIT License. See [LICENSE](LICENSE).
